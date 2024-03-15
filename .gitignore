@@ -1,1 +1,9 @@
-./data/data
+data/data/
+data/collected/
+visualizations/
+PowerSampler_bkp.py
+tester_base_bkp.py 
+tester_torch110.py
+threadTest.py 
+tester.py 
+tester_orig.py 
