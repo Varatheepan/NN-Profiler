@@ -7,3 +7,5 @@ tester_torch110.py
 threadTest.py 
 tester.py 
 tester_orig.py 
+data/*
+__pycache__
