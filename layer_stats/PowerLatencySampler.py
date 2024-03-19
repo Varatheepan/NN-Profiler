@@ -14,11 +14,11 @@ from PIL import Image
 from torchvision import transforms
 from copy import deepcopy
 
-from operations import CustomOpExecutor
-from modules import VitConvOp, VitPosOp
+from layer_stats.utils.operations import CustomOpExecutor
+from layer_stats.utils.modules import VitConvOp, VitPosOp
 
-from checker import get_model
-from tegrastats_utils import analyze_power_stats
+from layer_stats.utils.checker import get_model
+from tegrestats.tegrastats_utils import analyze_power_stats
 import time, threading
 import numpy as np
 import subprocess
@@ -346,7 +346,7 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
         print(f"Latency evaluation for `{model_name}` on image `{img_path}")
 
         # File name to store the collected latency data samples
-        stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS,'latency',model_name)}/{img_path.split('.')[0]}_sc_{sampling_count}.csv"
+        stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)}/{img_path.split('.')[0]}_sc_{sampling_count}.csv"
         
         # Load the image
         x = Image.open(os.path.join(project_path, 'data', 'imagenet', img_path))

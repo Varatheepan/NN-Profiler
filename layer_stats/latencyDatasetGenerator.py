@@ -1,6 +1,6 @@
 from LatencySampler import getLayerwiselatency
-from operations import database_spawn
-from checker import get_model_list
+from layer_stats.utils.operations import database_spawn
+from layer_stats.utils.checker import get_model_list
 
 '''
 To change the number of data samples collected per image, change the parameters defined in `LatencySampler.py` script.

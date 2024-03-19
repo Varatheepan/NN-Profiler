@@ -1,6 +1,6 @@
 from PowerLatencySampler import getLayerwisePowerLatency
-from operations import database_spawn
-from checker import get_model_list
+from layer_stats.utils.operations import database_spawn
+from layer_stats.utils.checker import get_model_list
 import os
 import time
 

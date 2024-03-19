@@ -14,11 +14,11 @@ from PIL import Image
 from torchvision import transforms
 from copy import deepcopy
 
-from operations import CustomOpExecutor
-from modules import VitConvOp, VitPosOp
+from layer_stats.utils.operations import CustomOpExecutor
+from layer_stats.utils.modules import VitConvOp, VitPosOp
 
-from checker import get_model
-from tegrastats_utils import analyze_power_stats
+from layer_stats.utils.checker import get_model
+from tegrestats.tegrastats_utils import analyze_power_stats
 import time, threading
 import numpy as np
 import subprocess

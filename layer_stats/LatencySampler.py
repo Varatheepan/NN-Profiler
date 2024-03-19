@@ -14,10 +14,10 @@ from PIL import Image
 from torchvision import transforms
 from copy import deepcopy
 
-from operations import CustomOpExecutor
-from modules import VitConvOp, VitPosOp
+from layer_stats.utils.operations import CustomOpExecutor
+from layer_stats.utils.modules import VitConvOp, VitPosOp
 
-from checker import get_model, get_model_list
+from layer_stats.utils.checker import get_model, get_model_list
 import time
 import numpy as np
 import csv
