@@ -22,7 +22,8 @@ from tegrestats.tegrastats_utils import analyze_power_stats
 import time, threading
 import numpy as np
 import subprocess
-import csv
+# import csv
+import json
 
 ##### Define Parameters #####
 # Parameters for power data sampling
@@ -33,7 +34,7 @@ sampling_window = layerSamplingTime + sampling_boundry*2
 ## Tegrastats parameters
 tgr_interval = 20                                           # tegrastats sampling interval in milliseconds
 tgr_NS = int((1000/tgr_interval)*sampling_window)           # Number of sample to extract from tegrastats
-sampling_freq = int(1/tgr_interval)                         # number of sample per second
+sampling_freq = int(1000/tgr_interval)                         # number of sample per second
 
 # Parameters for latency data sampling
 sampling_count = 100       # Number of latency data to collect per layer 
@@ -212,7 +213,7 @@ inception_preprocess = transforms.Compose([
 ])
 '''
 
-def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device:str, sample_paths:list,ModeS:str):
+def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device:str, sample_paths:list,ModeS:str,Parameters:list, evalPower:bool,evalLatency:bool):
 
     # Declare a device
     device = torch.device(Device)
@@ -262,117 +263,138 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
     # exit(0)'''
 
     # Project path
-    project_path = Path(__file__).resolve().parents[0]
+    project_path = Path(__file__).resolve().parents[1]
 
     '''# load the imagenet classes
     idx_to_label = load_imagenet_classes(txt_file=os.path.join(project_path, 'data', 'imagenet', 'imagenet.txt'))'''
 
+
     # Path to store the power dataset
-    if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)):
-        os.makedirs(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name))
+    if evalPower:
+        if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)):
+            os.makedirs(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name))
 
     # Path to store the latency dataset
-    if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)):
-        os.makedirs(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name))
+    if evalLatency:
+        if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)):
+            os.makedirs(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name))
 
     # Number of tegrastats data points collected in a second
     sampling_freq = int(1000/tgr_interval)
 
     # Loop over the sample paths
     for img_path in sample_paths:
-        ########### Power Data sampling #############
-        print(f"Power evaluation for `{model_name}` on image `{img_path}")
+        if evalPower:
+            ########### Power Data sampling #############
+            print(f"Power evaluation for `{model_name}` on image `{img_path}")
 
-        # File name to store the collected data power samples
-        stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)}/{img_path.split('.')[0]}_sf_{sampling_freq}_sb_{sampling_boundry}.csv"
+            # File name to store the collected data power samples
+            stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)}/{img_path.split('.')[0]}_sf_{sampling_freq}_sb_{sampling_boundry}.json"
 
-        # Load the image
-        x = Image.open(os.path.join(project_path, 'data', 'imagenet', img_path))
-        
-        # Open a csv file and a csvwriter object to store Power stats
-        power_stats_file = open(stats_file_name, "w", newline='')
-        power_csvwriter = csv.writer(power_stats_file,delimiter='\t')
+            # Load the image
+            x = Image.open(os.path.join(project_path, 'data', 'imagenet', img_path))
+            
+            # # Open a csv file and a csvwriter object to store Power stats
+            # power_stats_file = open(stats_file_name, "w", newline='')
+            # power_csvwriter = csv.writer(power_stats_file,delimiter='\t')
 
-        # Pass the image through the layers till collect `tgr_NS` samples and get an average power 
-        for idx, layer in enumerate(layers):
-            # # starting time for the power sampling peroid
-            # tstart = time.time()        
-            try:
-                if idx == 0:
-                    # The first layer input is a PIL image object
-                    x_sample = deepcopy(x)
-                else:
-                    # all other layers inputs are torch tensors
-                    x_sample = x.detach().clone()
+            # Json to store parameters extracted from tegrastats
+            PowerStats = {}
 
-                # # Time tracker for the power sampling time peroid
-                # tcurr = time.time()
+            # Pass the image through the layers till collect `tgr_NS` samples and get an average power 
+            for idx, layer in enumerate(layers):
+                # # starting time for the power sampling peroid
+                # tstart = time.time()        
+                try:
+                    if idx == 0:
+                        # The first layer input is a PIL image object
+                        x_sample = deepcopy(x)
+                    else:
+                        # all other layers inputs are torch tensors
+                        x_sample = x.detach().clone()
 
-                # Run tegrastats and extract `tgr_NS` number of samples, store data in `tegarstatsDataTemp.txt`
-                command = f'tegrastats --interval {tgr_interval} | head -n {tgr_NS} > tegarstatsDataTemp.txt'
+                    # # Time tracker for the power sampling time peroid
+                    # tcurr = time.time()
 
-                # A subprocess to run the tegrastats command
-                stats_proc = subprocess.Popen(command,shell=True)
+                    # Run tegrastats and extract `tgr_NS` number of samples, store data in `tegarstatsDataTemp.txt`
+                    command = f'tegrastats --interval {tgr_interval} | head -n {tgr_NS} > tegarstatsDataTemp.txt'
 
-                # Loop will run until the subprocess finishes collecting `tgr_NS` number of samples
-                while (stats_proc.poll()==None):
-                ## while ((tcurr-tstart < sampling_window) or stats_proc.poll()==None):
-                    
-                    # Run the current layer 
-                    x = op_executor.execute(model_name, idx, x_sample, device)
-                    x = layer(x)
+                    # A subprocess to run the tegrastats command
+                    stats_proc = subprocess.Popen(command,shell=True)
 
-                    # Time tracker for the power sampling time peroid
-                    tcurr = time.time()
+                    # Loop will run until the subprocess finishes collecting `tgr_NS` number of samples
+                    while (stats_proc.poll()==None):
+                    ## while ((tcurr-tstart < sampling_window) or stats_proc.poll()==None):
+                        
+                        # Run the current layer 
+                        x = op_executor.execute(model_name, idx, x_sample, device)
+                        x = layer(x)
 
-                # Get the power data from the tegrastats outputs
-                layer_stats = analyze_power_stats("tegarstatsDataTemp.txt",DeviceS,sampling_boundry, layerSamplingTime,sampling_freq)
+                        # Time tracker for the power sampling time peroid
+                        tcurr = time.time()
 
-                # Add layer id as the first element of a row
-                layer_stats.insert(0,idx)
-                power_csvwriter.writerow(layer_stats)
+                    # Get the power data from the tegrastats outputs
+                    layer_stats = analyze_power_stats("tegarstatsDataTemp.txt",DeviceS, Parameters)
+                    PowerStats[idx] = layer_stats
+                    # Add layer id as the first element of a row
+                    # layer_stats.insert(0,idx)
+                    # power_csvwriter.writerow(layer_stats)
 
-                # Added to eliminate the power of current layer get accounted towards the next
-                time.sleep(2)
+                    # Added to eliminate the power of current layer get accounted towards the next
+                    time.sleep(2)
 
-            except Exception as e:
-                print(f'Layer {idx} failed: {e}')
-                break
+                except Exception as e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    print(exc_type, fname, exc_tb.tb_lineno)
+                    break
+            # Write data to a json file
+            power_stats_file = open(stats_file_name, "w")
+            json.dump(PowerStats,power_stats_file)
+            # close the csv file
+            power_stats_file.close()
 
-        # close the csv file
-        power_stats_file.close()
+        if evalLatency:
+            ########### Latency Data sampling #############
+            print(f"Latency evaluation for `{model_name}` on image `{img_path}")
 
-        ########### Latency Data sampling #############
-        print(f"Latency evaluation for `{model_name}` on image `{img_path}")
+            # File name to store the collected latency data samples
+            stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)}/{img_path.split('.')[0]}_sc_{sampling_count}.json"
+            
+            # Load the image
+            x = Image.open(os.path.join(project_path, 'data', 'imagenet', img_path))
 
-        # File name to store the collected latency data samples
-        stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)}/{img_path.split('.')[0]}_sc_{sampling_count}.csv"
-        
-        # Load the image
-        x = Image.open(os.path.join(project_path, 'data', 'imagenet', img_path))
+            # # Open a csv file and a csvwriter object to store Power stats
+            # latency_stats_file = open(stats_file_name, "w", newline='')
+            # latency_csvwriter = csv.writer(latency_stats_file,delimiter='\t')
+            
+            # Json object to store latecy values
+            LatencyStats = {}
+            # Pass the image through the layers 100 times and get an average latency 
+            for idx, layer in enumerate(layers):
+                try:
+                    if idx == 0:
+                        x_sample = deepcopy(x)
+                    else:
+                        x_sample = x.detach().clone()
+                    local_latency_array = []
+                    for j in range(sampling_count):
+                        t1 = time.time()
+                        x = op_executor.execute(model_name, idx, x_sample, device)
+                        x = layer(x)
+                        t2 = time.time()
+                        local_latency_array.append(t2-t1)
 
-        # Open a csv file and a csvwriter object to store Power stats
-        latency_stats_file = open(stats_file_name, "w", newline='')
-        latency_csvwriter = csv.writer(latency_stats_file,delimiter='\t')
-        
-        # Pass the image through the layers 100 times and get an average latency 
-        for idx, layer in enumerate(layers):
-            try:
-                if idx == 0:
-                    x_sample = deepcopy(x)
-                else:
-                    x_sample = x.detach().clone()
-                local_latency_array = []
-                for j in range(sampling_count):
-                    t1 = time.time()
-                    x = op_executor.execute(model_name, idx, x_sample, device)
-                    x = layer(x)
-                    t2 = time.time()
-                    local_latency_array.append(t2-t1)
-
-                local_latency_array.insert(0,idx)
-                latency_csvwriter.writerow(local_latency_array)
-            except Exception as e:
-                print(f'Layer {idx} failed: {e}')
-                break
-        latency_stats_file.close()
+                    # local_latency_array.insert(0,idx)
+                    LatencyStats[idx] = local_latency_array
+                    # latency_csvwriter.writerow(local_latency_array)
+                except Exception as e:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    print(exc_type, fname, exc_tb.tb_lineno)
+                    break
+            # Write data to a json file
+            latency_stats_file = open(stats_file_name, "w")
+            json.dump(LatencyStats,latency_stats_file)
+            # close the csv file
+            latency_stats_file.close()

@@ -10,3 +10,8 @@ tester_orig.py
 data/*
 __pycache__
 model_loader_generate.py
+layer_stats/LatencySampler.py
+layer_stats/PowerSampler.py
+layer_stats/latencyDatasetGenerator.py
+layer_stats/powerDatasetGenerator.py
+imagenet.zip
