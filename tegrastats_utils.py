@@ -13,7 +13,7 @@ def analyze_power_stats(txt_file: str, device,sampling_boundry, layerSamplingTim
     elif device == "gpu":
         target_data = "VDD_SYS_GPU"
     else:
-        print(f"Devices \"{device}\" is not identified. Device defaults to CPU.")
+        print(f"Tegrastats: Devices \"{device}\" is not identified. Device defaults to CPU.")
 
     for j,line in enumerate(content):
         lineSplit = line.split(" ")

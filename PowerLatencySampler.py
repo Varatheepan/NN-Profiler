@@ -216,6 +216,12 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
 
     # Declare a device
     device = torch.device(Device)
+    print("current device: ", device)
+    
+    if "cuda" in Device:
+        DeviceS = "gpu"
+    elif Device == "cpu":
+        DeviceS = "cpu"
 
     # Instantiate the model
     if model_name in ["regnet_y_128gf", "regnet_y_16gf", "regnet_y_32gf", "vit_b_16", "vit_h_14", "vit_l_16"]:
@@ -262,12 +268,12 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
     idx_to_label = load_imagenet_classes(txt_file=os.path.join(project_path, 'data', 'imagenet', 'imagenet.txt'))'''
 
     # Path to store the power dataset
-    if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS,'power',model_name)):
-        os.makedirs(os.path.join(project_path, 'Dataset', ModeS,'power',model_name))
+    if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)):
+        os.makedirs(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name))
 
     # Path to store the latency dataset
-    if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS,'latency',model_name)):
-        os.makedirs(os.path.join(project_path, 'Dataset', ModeS,'latency',model_name))
+    if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)):
+        os.makedirs(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name))
 
     # Number of tegrastats data points collected in a second
     sampling_freq = int(1000/tgr_interval)
@@ -275,10 +281,10 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
     # Loop over the sample paths
     for img_path in sample_paths:
         ########### Power Data sampling #############
-        print(f"Power eveluation for `{model_name}` on image `{img_path}")
+        print(f"Power evaluation for `{model_name}` on image `{img_path}")
 
         # File name to store the collected data power samples
-        stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS,'power',model_name)}/{img_path.split('.')[0]}_sf_{sampling_freq}_sb_{sampling_boundry}.csv"
+        stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)}/{img_path.split('.')[0]}_sf_{sampling_freq}_sb_{sampling_boundry}.csv"
 
         # Load the image
         x = Image.open(os.path.join(project_path, 'data', 'imagenet', img_path))
@@ -320,7 +326,7 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
                     tcurr = time.time()
 
                 # Get the power data from the tegrastats outputs
-                layer_stats = analyze_power_stats("tegarstatsDataTemp.txt",Device,sampling_boundry, layerSamplingTime,sampling_freq)
+                layer_stats = analyze_power_stats("tegarstatsDataTemp.txt",DeviceS,sampling_boundry, layerSamplingTime,sampling_freq)
 
                 # Add layer id as the first element of a row
                 layer_stats.insert(0,idx)
@@ -337,7 +343,7 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
         power_stats_file.close()
 
         ########### Latency Data sampling #############
-        print(f"Latency eveluation for `{model_name}` on image `{img_path}")
+        print(f"Latency evaluation for `{model_name}` on image `{img_path}")
 
         # File name to store the collected latency data samples
         stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS,'latency',model_name)}/{img_path.split('.')[0]}_sc_{sampling_count}.csv"

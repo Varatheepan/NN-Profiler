@@ -9,3 +9,4 @@ tester.py
 tester_orig.py 
 data/*
 __pycache__
+model_loader_generate.py

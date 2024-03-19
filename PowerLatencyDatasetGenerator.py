@@ -2,6 +2,7 @@ from PowerLatencySampler import getLayerwisePowerLatency
 from operations import database_spawn
 from checker import get_model_list
 import os
+import time
 
 '''
 To change the number of data samples collected per image, change the parameters defined in `PowerLatencySampler.py` script.
@@ -9,12 +10,16 @@ To change the number of data samples collected per image, change the parameters 
 #### Parameters #### 
 
 # Define the mode to run the experiment
-# Make sure the mode specified id laredy set
+# Make sure the mode specified is alredy set
 MODE = 0
 ModeS = f"Mode{MODE}"
 
-# Define the device for the evaluation
+# Define the device for the evaluation : {"cpu", "cuda:0"}
 Device = "cpu"
+if "cuda" in Device:
+    DeviceS = "gpu"
+elif Device == "cpu":
+    DeviceS = "cpu"
 
 # Define sample paths 
 sample_paths = ['img1.jpg', 'img2.jpg', 'img3.jpg']
@@ -42,8 +47,8 @@ def modeInfoExtractor():
     if modeValid:
 
         print(f"Mode{lineMode} found")
-        if not os.path.exists(f"Dataset/{ModeS}"):
-            os.makedirs(f"Dataset/{ModeS}")
+        if not os.path.exists(f"Dataset/{ModeS}/{DeviceS}"):
+            os.makedirs(f"Dataset/{ModeS}/{DeviceS}")
         ConfFilePath = f"Dataset/{ModeS}/{ModeS}.conf"
         confFile = open(ConfFilePath,"w")
         confFile.writelines(Configs)
@@ -63,6 +68,9 @@ def modeInfoExtractor():
 
 if __name__ == "__main__":
     try:
+        t1 = time.time()
         modeInfoExtractor()
+        t2 = time.time()
+        print(f"Time taken for Mode{MODE}: {t2-t1} seconds")
     except Exception as e:
         print("Error found: ",e)
