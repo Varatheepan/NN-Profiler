@@ -6,6 +6,9 @@ import sys
 import numpy as np
 import json
 
+
+# TODO: store standard deviation with all the avearage parameters
+
 # Project path
 project_path = Path(__file__).resolve().parents[2]
 
@@ -16,7 +19,7 @@ def arg_parser():
     parser = argparse.ArgumentParser(
         description= "This takes `MODE` as the argument to process")
     parser.add_argument("--modes", default=AvailModes,type=list, help="list of mode numbers to process")
-    parser.add_argument("--params", default=[""])
+    parser.add_argument("--params", default=[])
     return parser.parse_args()
 
 def processModeStats(args):
@@ -30,6 +33,9 @@ def processModeStats(args):
 
         # get the modes to post process
         modes = args.modes
+
+        # Falg to overwrite tegrastats parameters to process
+        isCustomStatList = bool(len(args.params)) 
 
         # Process raw data for each mode
         for modeID in modes:
@@ -98,18 +104,61 @@ def processModeStats(args):
 
                                     if not line:
                                         break
-
                                     line = json.loads(line)
                                     for layerIdx, stat in line.items():
                                         if layerIdx not in Stats:
                                             Stats[layerIdx] = []
                                         Stats[layerIdx].extend(stat)
-                                        
-                            # TODO: Implement code for Power and other tegratstats parameters
 
                             # Calculate average values for all the layers
                             for layerIdx, stat in Stats.items():
                                 NetStats[layerIdx] = float(sum(stat))/len(stat)
+                        
+                        # TODO: Implementation for other tegratstats parameters
+                                
+                        # Process power parameters
+                        elif Parameter == "power":
+                            # Combine layer-wise data for all images
+                            for imgSample in imgSamples:
+                                StatsFile = open(os.path.join(NetPath,imgSample), "r")
+
+                                # Read the file line by line
+                                while True:
+                                    # A line represents a layer data
+                                    line = StatsFile.readline().strip()
+
+                                    if not line:
+                                        break
+                                    line = json.loads(line)
+                                    for layerIdx, statDict in line.items():
+                                        for statName, stat in statDict.items():
+                                            
+                                            # TODO: process a cutom stats list
+                                            # if isCustomStatList:
+                                            # else: 
+                                            #If parameter list is not defined process corresponeding device power data
+
+                                            # process CPU power data
+                                            if Device == "cpu":
+                                                if statName == "VDD_SYS_CPU":
+                                                    if layerIdx not in Stats:
+                                                        Stats[layerIdx] = {}
+                                                    if "VDD_SYS_CPU" not in Stats[layerIdx]:
+                                                        Stats[layerIdx]["VDD_SYS_CPU"] = []
+                                                    Stats[layerIdx]["VDD_SYS_CPU"].extend(stat)
+                                            elif Device == "gpu":
+                                                if statName == "VDD_SYS_GPU":
+                                                    if layerIdx not in Stats:
+                                                        Stats[layerIdx] = {}
+                                                    if "VDD_SYS_GPU" not in Stats[layerIdx]:
+                                                        Stats[layerIdx]["VDD_SYS_GPU"] = []
+                                                    Stats[layerIdx]["VDD_SYS_GPU"].extend(stat)
+
+                            # Calculate average values for all the layers
+                            for layerIdx, statDict in Stats.items():
+                                NetStats[layerIdx] = {}
+                                for statName, stat in statDict.items():
+                                    NetStats[layerIdx][statName] = float(sum(stat))/len(stat)
 
                         # Store processed values for each Network    
                         ParameterStats[net] = NetStats
@@ -136,7 +185,12 @@ if __name__ == "__main__":
         args = arg_parser()
         ModeWiseStats , ModeWiseNetworks = processModeStats(args)
         print("Processed Networks for each mode: ",ModeWiseNetworks)
-        print("Processed Mode stats: ", ModeWiseStats)
+        print("Processed Mode stats: ")
+        for Parameter, statDict in ModeWiseStats[0]["cpu"].items():
+            print("\nParameter: ", Parameter)
+            for net, stat in statDict.items():
+                print(f"Network: {net}")
+                print(stat)
 
     except Exception as e:
         print("Error found: ",e)
