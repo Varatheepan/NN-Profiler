@@ -15,7 +15,7 @@ project_path = Path(__file__).resolve().parents[2]
 AvailModes = os.listdir(os.path.join(project_path,"Dataset"))
 AvailModes = [int(mode.split("Mode")[1]) for mode in AvailModes if (os.path.isdir(os.path.join(project_path,"Dataset",mode)) and "Mode" in mode)]
 
-def arg_parser():
+def arguments_parser():
     parser = argparse.ArgumentParser(
         description= "This takes `MODE` as the argument to process")
     parser.add_argument("--modes", default=AvailModes,type=list, help="list of mode numbers to process")
@@ -233,7 +233,7 @@ def storeDataset(args,ModeWiseStatsF):
 
 if __name__ == "__main__":
     try:
-        args = arg_parser()
+        args = arguments_parser()
 
         # Process the raw data an get the averages
         ModeWiseStats , ModeWiseNetworks = processModeStats(args)

@@ -24,20 +24,21 @@ import numpy as np
 import subprocess
 # import csv
 import json
+import argparse
 
-##### Define Parameters #####
-# Parameters for power data sampling
-layerSamplingTime = 5       # The time peroid to run a layer continuously to sample power stats. \ 
-sampling_boundry = 1        # samples will be collected for (layerSamplingTime + sampling_window*2) seconds and the middle (layerSamplingTime) seconds data will be sampled
-sampling_window = layerSamplingTime + sampling_boundry*2
+# ##### Define Parameters #####
+# # Parameters for power data sampling
+# layerSamplingTime = 5       # The time peroid to run a layer continuously to sample power stats. \ 
+# sampling_boundry = 1        # samples will be collected for (layerSamplingTime + sampling_window*2) seconds and the middle (layerSamplingTime) seconds data will be sampled
+# sampling_window = layerSamplingTime + sampling_boundry*2
 
-## Tegrastats parameters
-tgr_interval = 20                                           # tegrastats sampling interval in milliseconds
-tgr_NS = int((1000/tgr_interval)*sampling_window)           # Number of sample to extract from tegrastats
-sampling_freq = int(1000/tgr_interval)                         # number of sample per second
+# ## Tegrastats parameters
+# tgr_interval = 20                                           # tegrastats sampling interval in milliseconds
+# tgr_NS = int((1000/tgr_interval)*sampling_window)           # Number of sample to extract from tegrastats
+# sampling_freq = int(1000/tgr_interval)                         # number of sample per second
 
-# Parameters for latency data sampling
-sampling_count = 100       # Number of latency data to collect per layer 
+# # Parameters for latency data sampling
+# sampling_count = 100       # Number of latency data to collect per layer 
 
 def flatten_layers(dnn, is_vit=False, is_inception=False, is_squeezenet=False, is_google_net=False):
     layers = []
@@ -166,15 +167,15 @@ def load_imagenet_classes(txt_file: str):
     idx_to_label = {idx: label for idx, label in enumerate(labels)}
     return idx_to_label
 
-def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device:str, sample_paths:list,ModeS:str,Parameters:list, evalPower:bool,evalLatency:bool):
+def getLayerwisePowerLatency(args:argparse.Namespace,op_executor:CustomOpExecutor,model_name:str,ModeS:str,Parameters:list):
 
     # Declare a device
-    device = torch.device(Device)
+    device = torch.device(args.device)
     print("current device: ", device)
     
-    if "cuda" in Device:
+    if "cuda" in args.device:
         DeviceS = "gpu"
-    elif Device == "cpu":
+    elif args.device == "cpu":
         DeviceS = "cpu"
 
     # Instantiate the model
@@ -223,26 +224,34 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
 
 
     # Path to store the power dataset
-    if evalPower:
+    if args.eval_tgr:
         if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)):
             os.makedirs(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name))
 
     # Path to store the latency dataset
-    if evalLatency:
+    if args.eval_latency:
         if not os.path.exists(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)):
             os.makedirs(os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name))
 
-    # Number of tegrastats data points collected in a second
-    sampling_freq = int(1000/tgr_interval)
+    ## Tegrastats parameters
+            
+    # Tegrastats sampling duration with stablizing window
+    sampling_window = args.tgr_smpl_duration + args.tgr_smpl_boundry*2
+
+    # Total number of samples to extract from tegratstats
+    tgr_NS = int((1000/args.tgr_interval)*sampling_window)
+
+    # Expected number of sample per second of tegratstats
+    sampling_freq = int(1000/args.tgr_interval)                         
 
     # Loop over the sample paths
-    for img_path in sample_paths:
-        if evalPower:
+    for img_path in args.imgs:
+        if args.eval_tgr:
             ########### Power Data sampling #############
             print(f"Power evaluation for `{model_name}` on image `{img_path}")
 
             # File name to store the collected data power samples
-            stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)}/{img_path.split('.')[0]}_sf_{sampling_freq}_sb_{sampling_boundry}.json"
+            stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'power',model_name)}/{img_path.split('.')[0]}_sf_{sampling_freq}_sb_{args.tgr_smpl_boundry}.json"
 
             # Load the image
             x = Image.open(os.path.join(project_path, 'data', 'imagenet', img_path))
@@ -271,7 +280,7 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
 
                     # Run tegrastats and extract `tgr_NS` number of samples, store data in `tegarstatsDataTemp.txt`
                     tempPath = os.path.join(project_path,"tegrastatsDataTemp.txt")
-                    command = f'tegrastats --interval {tgr_interval} | head -n {tgr_NS} > {tempPath}'
+                    command = f'tegrastats --interval {args.tgr_interval} | head -n {tgr_NS} > {tempPath}'
 
                     # A subprocess to run the tegrastats command
                     stats_proc = subprocess.Popen(command,shell=True)
@@ -310,12 +319,12 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
             # close the csv file
             power_stats_file.close()
 
-        if evalLatency:
+        if args.eval_latency:
             ########### Latency Data sampling #############
             print(f"Latency evaluation for `{model_name}` on image `{img_path}")
 
             # File name to store the collected latency data samples
-            stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)}/{img_path.split('.')[0]}_sc_{sampling_count}.json"
+            stats_file_name = f"{os.path.join(project_path, 'Dataset', ModeS, DeviceS,'latency',model_name)}/{img_path.split('.')[0]}_sc_{args.lt_smpl_count}.json"
             
             # Load the image
             x = Image.open(os.path.join(project_path, 'data', 'imagenet', img_path))
@@ -334,7 +343,7 @@ def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device
                     else:
                         x_sample = x.detach().clone()
                     local_latency_array = []
-                    for j in range(sampling_count):
+                    for j in range(args.lt_smpl_count):
                         t1 = time.time()
                         x = op_executor.execute(model_name, idx, x_sample, device)
                         x = layer(x)
