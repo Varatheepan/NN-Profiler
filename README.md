@@ -44,8 +44,8 @@ To post process the data and get averaged layer-wise values for each parameter, 
 ```powershell
 python3 layer_stats/procssedDataGeneration/processData.py
 ```
-This will create a json file for each mode present (or specified). Each json file file will have network wise stats in the ```Network-Device-Parameter``` order.
-An example
+This will create a json file for each mode present (or specified). Each json file file will have network wise stats in the ```Network-Device-Parameter``` order.</br>
+An example mode data will look like following.
 ```json
 {
     "efficientnet_b2": {
