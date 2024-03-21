@@ -13,19 +13,20 @@ import json
 project_path = Path(__file__).resolve().parents[2]
 
 AvailModes = os.listdir(os.path.join(project_path,"Dataset"))
-AvailModes = [int(mode.split("Mode")[1]) for mode in AvailModes]
+AvailModes = [int(mode.split("Mode")[1]) for mode in AvailModes if (os.path.isdir(os.path.join(project_path,"Dataset",mode)) and "Mode" in mode)]
 
 def arg_parser():
     parser = argparse.ArgumentParser(
         description= "This takes `MODE` as the argument to process")
     parser.add_argument("--modes", default=AvailModes,type=list, help="list of mode numbers to process")
     parser.add_argument("--params", default=[])
+    parser.add_argument("--output_file_root", default=os.path.join(project_path,"Dataset/Processed"), help="The root directory to store all the mode stats files")
     return parser.parse_args()
 
 def processModeStats(args):
 
     try:
-        # Object to store all processed data for each mode
+        # Object to store all processed data for each mode in the order Mode-Device-Parameter-Network
         ModeWiseStats = {}
 
         # Networks available across each mode
@@ -34,7 +35,7 @@ def processModeStats(args):
         # get the modes to post process
         modes = args.modes
 
-        # Falg to overwrite tegrastats parameters to process
+        # Flag to overwrite tegrastats parameters to process
         isCustomStatList = bool(len(args.params)) 
 
         # Process raw data for each mode
@@ -122,6 +123,13 @@ def processModeStats(args):
                             for imgSample in imgSamples:
                                 StatsFile = open(os.path.join(NetPath,imgSample), "r")
 
+                                # Extract the tegrastats sampling related  arguments
+                                nameSplit = imgSample[:-5].split("_")
+                                sampligFreq = int(nameSplit[2])
+                                samplingBoundry = int(nameSplit[4])
+
+                                elimNumSamples = sampligFreq*samplingBoundry
+
                                 # Read the file line by line
                                 while True:
                                     # A line represents a layer data
@@ -132,7 +140,7 @@ def processModeStats(args):
                                     line = json.loads(line)
                                     for layerIdx, statDict in line.items():
                                         for statName, stat in statDict.items():
-                                            
+
                                             # TODO: process a cutom stats list
                                             # if isCustomStatList:
                                             # else: 
@@ -141,18 +149,22 @@ def processModeStats(args):
                                             # process CPU power data
                                             if Device == "cpu":
                                                 if statName == "VDD_SYS_CPU":
+                                                    # Values inside the intended stablized window
+                                                    statWindow = stat[elimNumSamples:-elimNumSamples]
                                                     if layerIdx not in Stats:
                                                         Stats[layerIdx] = {}
                                                     if "VDD_SYS_CPU" not in Stats[layerIdx]:
                                                         Stats[layerIdx]["VDD_SYS_CPU"] = []
-                                                    Stats[layerIdx]["VDD_SYS_CPU"].extend(stat)
+                                                    Stats[layerIdx]["VDD_SYS_CPU"].extend(statWindow)
                                             elif Device == "gpu":
                                                 if statName == "VDD_SYS_GPU":
+                                                    # Values inside the intended stablized window
+                                                    statWindow = stat[elimNumSamples:-elimNumSamples]
                                                     if layerIdx not in Stats:
                                                         Stats[layerIdx] = {}
                                                     if "VDD_SYS_GPU" not in Stats[layerIdx]:
                                                         Stats[layerIdx]["VDD_SYS_GPU"] = []
-                                                    Stats[layerIdx]["VDD_SYS_GPU"].extend(stat)
+                                                    Stats[layerIdx]["VDD_SYS_GPU"].extend(statWindow)
 
                             # Calculate average values for all the layers
                             for layerIdx, statDict in Stats.items():
@@ -179,18 +191,73 @@ def processModeStats(args):
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         print(exc_type, fname, exc_tb.tb_lineno)
 
+# Format processed data. For each mode stats of each network
+def formatProcessedData(args,ModeWiseStats,ModeWiseNetworks):
+
+    try:
+    
+        # Object to store all formatted data for each mode in the order Mode-Network-Device-Parameter
+        ModeWiseStatsF = {}
+
+        for modeID in ModeWiseNetworks.keys():
+            ModeWiseStatsF[modeID] = {}
+
+            for net in ModeWiseNetworks[modeID]:
+                ModeWiseStatsF[modeID][net] = {}
+
+                for Device in ModeWiseStats[modeID].keys():
+                    ModeWiseStatsF[modeID][net][Device] = {}
+
+                    for Parameter in ModeWiseStats[modeID][Device].keys():
+                        if Device in ModeWiseStats[modeID]:
+                            if Parameter in ModeWiseStats[modeID][Device]:
+                                if net in ModeWiseStats[modeID][Device][Parameter]:
+                                    ModeWiseStatsF[modeID][net][Device][Parameter] = ModeWiseStats[modeID][Device][Parameter][net]
+        
+        return ModeWiseStatsF 
+    
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        print(exc_type, fname, exc_tb.tb_lineno)
+
+def storeDataset(args,ModeWiseStatsF):
+    FileRoot= args.output_file_root
+
+    if not os.path.exists(FileRoot):
+        os.makedirs(FileRoot)
+    for modeID in ModeWiseStatsF.keys():
+        filePath = os.path.join(FileRoot,"Mode"+str(modeID)+".json")
+        with open(filePath,"w") as jsonFile:
+            json.dump(ModeWiseStatsF[modeID],jsonFile)
 
 if __name__ == "__main__":
     try:
         args = arg_parser()
+
+        # Process the raw data an get the averages
         ModeWiseStats , ModeWiseNetworks = processModeStats(args)
+
+        # Fprmat the order to Mode-Network-Device-Parameter
+        ModeWiseStatsF = formatProcessedData(args,ModeWiseStats,ModeWiseNetworks)
+
+        storeDataset(args,ModeWiseStatsF)
+
+        """
+        # Print statement for manual verification
         print("Processed Networks for each mode: ",ModeWiseNetworks)
-        print("Processed Mode stats: ")
-        for Parameter, statDict in ModeWiseStats[0]["cpu"].items():
-            print("\nParameter: ", Parameter)
-            for net, stat in statDict.items():
-                print(f"Network: {net}")
-                print(stat)
+        print("Processed Mode stats: \n")
+        
+        for net, statDict1 in ModeWiseStatsF[1].items():
+            print("\nNetwork: ", net)
+            for Device, statDict2 in statDict1.items():
+                print(f"\tDevice: {Device}")
+                for Parameter, stat in statDict2.items():
+                    print(f"\t\tParameter: {Parameter}")
+                    print(f"\t\t\t{stat}")
+            print("#########################################################################################")"""
 
     except Exception as e:
-        print("Error found: ",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        print(exc_type, fname, exc_tb.tb_lineno)

@@ -27,8 +27,8 @@ import json
 
 ##### Define Parameters #####
 # Parameters for power data sampling
-layerSamplingTime = 1       # The time peroid to run a layer continuously to sample power stats. \ 
-sampling_boundry = 5        # samples will be collected for (layerSamplingTime + sampling_window*2) seconds and the middle (layerSamplingTime) seconds data will be sampled
+layerSamplingTime = 5       # The time peroid to run a layer continuously to sample power stats. \ 
+sampling_boundry = 1        # samples will be collected for (layerSamplingTime + sampling_window*2) seconds and the middle (layerSamplingTime) seconds data will be sampled
 sampling_window = layerSamplingTime + sampling_boundry*2
 
 ## Tegrastats parameters
@@ -165,53 +165,6 @@ def load_imagenet_classes(txt_file: str):
         labels = [line.strip() for line in f.readlines()]
     idx_to_label = {idx: label for idx, label in enumerate(labels)}
     return idx_to_label
-
-'''# Define the dataset transformations
-default_preprocess = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-)])
-
-swag_preprocess = transforms.Compose([
-    transforms.Resize(384, interpolation=InterpolationMode.BICUBIC),
-    transforms.CenterCrop(384),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], 
-        std=[0.229, 0.224, 0.225]),
-])
-
-vit_h_preprocess = transforms.Compose([
-    transforms.Resize(518, interpolation=InterpolationMode.BICUBIC),
-    transforms.CenterCrop(518),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], 
-        std=[0.229, 0.224, 0.225]),
-])
-
-vit_l_preprocess = transforms.Compose([
-    transforms.Resize(512, interpolation=InterpolationMode.BICUBIC),
-    transforms.CenterCrop(512),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], 
-        std=[0.229, 0.224, 0.225]),
-])
-
-inception_preprocess = transforms.Compose([
-    transforms.Resize(342),
-    transforms.CenterCrop(299),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], 
-        std=[0.229, 0.224, 0.225]),
-])
-'''
 
 def getLayerwisePowerLatency(op_executor:CustomOpExecutor,model_name:str, Device:str, sample_paths:list,ModeS:str,Parameters:list, evalPower:bool,evalLatency:bool):
 
