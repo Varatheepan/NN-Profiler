@@ -1,0 +1,69 @@
+from __future__ import annotations
+import os, sys
+import torch
+import torch.nn as nn
+import queue
+
+# This class will handle a subset of layers of a network to run on a device
+class Stage:
+    # def __init__(self,Device:torch.DeviceObjType,Layers:nn.Module, OutPutQueue: queue.Queue, InOutBuf:int = -1) -> None:
+    def __init__(self,Device:torch.DeviceObjType,Layers:nn.Module, InOutBuf:int = -1, stagePosition:int = 0) -> None:
+        
+        # A subset of layers from a network 
+        self.layerSet = Layers      
+
+        # The device to run the stage
+        self.device = Device        
+
+        # A queue to buffer the inputs to the stage
+        self.InputQueue = queue.Queue(InOutBuf)  
+
+        # # A queue to buffer the inputs to the stage
+        # self.OutputQueue = OutPutQueue    
+
+        # If the stage is at the start(0)/middle(1)/end(2) of the pipleine
+        self.stagePos = stagePosition       
+        
+        if stagePosition == 2:
+            self.OutputQueue = queue.Queue()
+
+    def forward(self, NextStage: Stage):
+
+        """Forward the next input present in the input queue and store the output in the output queue.
+        
+        Parameters
+        ----------
+        NextStage:
+            Next stage in the pipeline of the NN
+        """
+        
+        # Retrieve input from the queue
+        x = self.InputQueue.get()
+
+        # For the first stage set the device
+        if self.stagePos == 0 and x.device.type != self.device.type:
+            x = x.to(self.device)
+        # Run inference 
+        x = self.layerSet(x)
+
+        # # Store the output to the output queue
+        # self.OutputQueue.put(x)
+
+        # If there are stages after this, store the output to the input queue of the next stage
+        if self.stagePos == 0 or self.stagePos == 1:
+
+            # Set the output to the next stage's device
+            if self.device.type != NextStage.device.type:
+                x = x.to(NextStage.devce)
+            NextStage.InputQueue.put(x)
+        
+        # Put the data to cpu if this stage is at the end
+        else:
+            if self.device.type != 'cpu':
+                x = x.to('cpu')
+            self.OutputQueue.put(x)
+
+
+    def assignToDevice(self):
+        """ Assign the stage to the device."""
+        self.layerSet.to(self.device)
