@@ -33,7 +33,7 @@ Tegratstats related parameters
 
 Latency related parameters
 
-- eval_latency; The number of times to run a layer for the latency experiment(store_true). 
+- eval_latency: Whether to evaluate latency. Intended for power evaluation(store_true). 
 - lt_smpl_count: The number of times to run a layer for the latency experiment (default=100).
 
 ```
@@ -46,7 +46,7 @@ python3 layer_stats/procssedDataGeneration/processData.py
 ```
 This will create a json file for each mode present (or specified). Each json file file will have network wise stats in the ```Network-Device-Parameter``` order.</br>
 An example mode data will look like following.
-```json
+```python
 {
     "efficientnet_b2": {
         "gpu": {
