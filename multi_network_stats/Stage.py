@@ -15,16 +15,19 @@ class Stage:
         # The device to run the stage
         self.device = Device        
 
+        # Assign the layerStage to the device
+        self.assignToDevice()
+        
         # A queue to buffer the inputs to the stage
         self.InputQueue = queue.Queue(InOutBuf)  
 
         # # A queue to buffer the inputs to the stage
         # self.OutputQueue = OutPutQueue    
 
-        # If the stage is at the start(0)/middle(1)/end(2) of the pipleine
+        # If the stage is at the start(0)/middle(1)/end(2) of the network pipleine OR is a stand alone(3) 
         self.stagePos = stagePosition       
         
-        if stagePosition == 2:
+        if stagePosition == 2 or stagePosition == 3:
             self.OutputQueue = queue.Queue()
 
     def forward(self, NextStage: Stage):
@@ -41,7 +44,7 @@ class Stage:
         x = self.InputQueue.get()
 
         # For the first stage set the device
-        if self.stagePos == 0 and x.device.type != self.device.type:
+        if (self.stagePos == 0 or self.stagePos == 3) and x.device.type != self.device.type:
             x = x.to(self.device)
         # Run inference 
         x = self.layerSet(x)
@@ -54,7 +57,7 @@ class Stage:
 
             # Set the output to the next stage's device
             if self.device.type != NextStage.device.type:
-                x = x.to(NextStage.devce)
+                x = x.to(NextStage.device)
             NextStage.InputQueue.put(x)
         
         # Put the data to cpu if this stage is at the end
