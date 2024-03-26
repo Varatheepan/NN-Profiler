@@ -90,15 +90,15 @@ def InitializeParams(args):
 
     return ModeS, Parameters
 
-def modeInfoExtractor(args, ModeS):
+def modeInfoExtractor(args, ModeS, Parameters):
 
     # Assigin device name for data storing
     if "cuda" in args.device:
         DeviceS = "gpu"
-        Parameters = ["VDD_SYS_GPU"]
+        if len(Parameters) == 0: Parameters = ["VDD_SYS_GPU"]
     elif args.device == "cpu":
         DeviceS = "cpu"
-        Parameters = ["VDD_SYS_CPU",]
+        if len(Parameters) == 0: Parameters = ["VDD_SYS_CPU",]
 
     modeValid = False
     Configs = []
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         else:
             ModeS, Parameters = InitializeParams(args)
             if len(Parameters)>0:
-                modeInfoExtractor(args,ModeS)
+                modeInfoExtractor(args,ModeS, Parameters)
         t2 = time.time()
         print(f"Time taken for Mode{args.mode}: {t2-t1} seconds")
     except Exception as e:
