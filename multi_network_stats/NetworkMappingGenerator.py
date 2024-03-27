@@ -1,3 +1,4 @@
+import json
 import os, sys
 import torch
 import torch.nn as nn
@@ -5,21 +6,25 @@ import queue
 import numpy as np
 from itertools import permutations
 from copy import deepcopy
+from pathlib import Path
 
-from layer_stats.rawDataGeneration.PowerLatencySampler import flatten_layers
+from layer_stats.rawDataGeneration.PowerLatencySampler import flatten_layers, count_layers
 from layer_stats.utils.checker import get_model
 from multi_network_stats.Stage import Stage
+
+projectPath = Path(__file__).resolve().parents[0]
+print(projectPath)
 
 class MappingGenerator:
 
     # class variable
     Instances = []
 
-    def __init__(self, device_list:list = ['cpu', 'cuda'], network_list = ['alexnet','mobilenet_v2'], NumSamples:int = 1000, CaseSamples:list = None, device_selecion_bias:list = None) -> None:
+    def __init__(self, device_list:list = ['cpu', 'cuda'], network_list = ['alexnet','mobilenet_v2'], NumSamples:int = 1000, CaseSamples:list = None, device_prioriy:list = None) -> None:
         """
             Parameters
             ----------
-            compute_capability: The weightage given to the devices in the device_list according while craeting mapping samples
+            device_prioriy: The weightage given to the devices in the device_list according while craeting mapping samples
             Eg: [1,2] will allocate the stage with more layers to `cuda` often
         """
         # The list of devices
@@ -50,7 +55,10 @@ class MappingGenerator:
         self.generate_mapCases(self.NumSamples,CaseSamples)
 
         # A dictionary of number of layers per network
-        self.numLayerDict = {'alexnet':21,'mobilenet_v2':35}
+        self.numLayerDict = {}
+
+        # Download and store the model weights and update numLayerDict
+        self.download_model_weights()
 
         # The total number of samples generated
         self.iterIdx = 0
@@ -59,9 +67,9 @@ class MappingGenerator:
         self.caseIdx = 0
 
         # Probablity of selecting each device for randomization
-        if device_selecion_bias == None:
-            device_selecion_bias = [1]*self.num_devices
-        self.deviceProb = list(np.array(device_selecion_bias)/float(sum(device_selecion_bias)))
+        if device_prioriy == None:
+            device_prioriy = [1]*self.num_devices
+        self.deviceProb = list(np.array(device_prioriy)/float(sum(device_prioriy)))
 
 
 
@@ -113,17 +121,21 @@ class MappingGenerator:
         Get the model weights and extract the layers
         """
         
-        # Instantiate the model
-        if model_name in ["regnet_y_128gf", "regnet_y_16gf", "regnet_y_32gf", "vit_b_16", "vit_h_14", "vit_l_16"]:
-            model = get_model(model_name)
-            print(f'Found model {model_name} with pretrained weights')
-        else:
-            try:
-                model = get_model(model_name)
-                print(f'Found model {model_name} with pretrained weights')
-            except Exception as e:
-                model = get_model(model_name)
-                print(f'Trying to load model {model_name} with weights DEFAULT')
+        # # Instantiate the model
+        # if model_name in ["regnet_y_128gf", "regnet_y_16gf", "regnet_y_32gf", "vit_b_16", "vit_h_14", "vit_l_16"]:
+        #     model = get_model(model_name)
+        #     print(f'Found model {model_name} with pretrained weights')
+        # else:
+        #     try:
+        #         model = get_model(model_name)
+        #         print(f'Found model {model_name} with pretrained weights')
+        #     except Exception as e:
+        #         model = get_model(model_name)
+        #         print(f'Trying to load model {model_name} with weights DEFAULT')
+
+        modelCkptPath = os.path.join(projectPath,"ModelCheckPoints",model_name,model_name+".ckpt")
+
+        model = torch.load(modelCkptPath)
 
         # Set model to eval mode
         model.eval()
@@ -157,30 +169,46 @@ class MappingGenerator:
         # Object for network mappings
         mapping = {}
 
-        # Satndalone state models
+        # Models to run in a stand-alone stage
         Sts_models = np.random.choice(model_list,NumSts,replace=False)
 
+        # Random selection of devices for each stand-alone stage
         for model_name in Sts_models:
             mapping[model_name] = {self.numLayerDict[model_name]:np.random.choice(self.device_list,1,replace=True,p = self.deviceProb)[0]}
         
+        # List of models to be splitted among some devices
         Spl_models = [model_name for model_name in model_list if model_name not in Sts_models]
 
         for model_name in Spl_models:
             mapping[model_name] = {}
             devices = deepcopy(self.device_list)
+            
+            # Maximum possible number of model breaking points
             numSplits = self.num_devices-1
+
+            # Random selection of number of breaks
             if numSplits != 1:
                 numSplits = np.random.randint(1,numSplits+1)
+            
+            # Random selection of layer layer indexes to split
             splitPoints = np.random.choice(range(self.numLayerDict[model_name]-1),numSplits,replace=False)
-            sorted(splitPoints)
+
+            # Sorting the selected layer indexes
+            splitPoints = sorted(splitPoints)
+
+            # Random seletcion of devices for each split set of layers
             stageDevices = np.random.choice(devices, numSplits+1, replace=False,p = self.deviceProb)
             # print("splitPoints: ", splitPoints, "stageDevices: ", stageDevices)
-            modelMapping = {}
+
+            # Formatting the mapping 
             for idx,selDevice in enumerate(stageDevices):
-                if idx > 0 and idx < len(splitPoints):
+
+                # Pair of layer number and a device. 
+                # A stage associated with a pair will consist of of the layers after the prevois set upto the current layer index(inclusive).
+                if idx >= 0 and idx < len(splitPoints):
                     mapping[model_name][splitPoints[idx]] = selDevice
-                elif idx == 0:
-                    mapping[model_name][splitPoints[idx]] = selDevice
+                # elif idx == 0:
+                #     mapping[model_name][splitPoints[idx]] = selDevice
                 else:
                     mapping[model_name][self.numLayerDict[model_name]] = selDevice
         return mapping
@@ -198,32 +226,49 @@ class MappingGenerator:
         # List of stages in the pipeline order 
         stages = []
 
+        # Network with a stand-alone stage
         if len(mapping) == 1:
+
+            # Adding all the layers to a sequencial block
             layerBlock = nn.Sequential()
             for layer in layers:
                 layerBlock.append(layer)
+            
+            # Creating a stage 
             stage = Stage(list(mapping.values())[0],layerBlock,stagePosition=3)
             stages.append(stage)
 
+        # For networks split among devices
         else:
+            # The layer indexes
             indexes = mapping.keys()
+
+            # Sorting the layer indexes
             orderedIdx = sorted(list(indexes))
+
+            # Sorting the devices in the same order as layers
             Devices = [mapping[idx] for idx in orderedIdx]
 
             numMaps = len(mapping)
 
+            # Creating stages from each set of layers
             for idx,layerIDX in enumerate(orderedIdx):
+
+                # An intermediate stage: for more than two stages
                 if idx > 0 and idx < numMaps - 1:
                     layerBlock = nn.Sequential()
                     for layer in layers[orderedIdx[idx-1]+1:layerIDX+1]:
                         layerBlock.append(layer)
                     stage = Stage(Devices[idx],layerBlock,stagePosition=1)
-                    
+
+                # First stage of a network pipeline 
                 elif idx == 0:
                     layerBlock = nn.Sequential()
                     for layer in layers[:layerIDX+1]:
                         layerBlock.append(layer)
-                    stage = Stage(Devices[idx],layerBlock,stagePosition=1)
+                    stage = Stage(Devices[idx],layerBlock,stagePosition=0)
+                
+                # Last stage of network pipeline
                 else:
                     layerBlock = nn.Sequential()
                     for layer in layers[orderedIdx[idx-1]+1:]:
@@ -235,18 +280,21 @@ class MappingGenerator:
         return stages
 
     def generate_mapCases(self, NumSamples, CaseSamples:list = None):
-        #  TODO: If num of devices more the the nummber of networks in the workload
+
         # Number cases to be considered
-        num_cases = self.num_devices + 1
+        num_cases = len(self.network_list) + 1
 
         if not CaseSamples or len(CaseSamples) < num_cases:
-
+            
+            # A function to determine the number of sample to generate per case
             W = np.array([np.exp(-0.5*val) for val in range(num_cases)])
 
             normalizedW = W/W.sum()
 
+            # Mapping samples to generate per case
             CaseSamples = [int(val*NumSamples) for val in normalizedW]
 
+            # Assign reamaining sample to case 0 to meet the total num of samples
             CaseSamples[0] = CaseSamples[0] + (NumSamples - sum(CaseSamples))
 
             if len(CaseSamples) < num_cases: print(F"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
@@ -258,6 +306,53 @@ class MappingGenerator:
 
         print("self.mapCases: ",self.mapCases)
 
+    def download_model_weights(self):
+
+        """
+        Download the model checkpoints if not present alraedy, and update the number of layers
+        """
+
+        checkpointsPath = os.path.join(projectPath,"ModelCheckPoints")
+
+        NumOfLayersJsonFile = os.path.join(projectPath,"numLayers.json")
+
+        NumOfLayersJson = {}
+
+        if not os.path.exists(checkpointsPath):
+                os.mkdir(checkpointsPath)
+            
+        for model_name in self.network_list:
+            
+            modelCktPath = os.path.join(checkpointsPath,model_name)
+
+            if not os.path.exists(modelCktPath):
+                os.mkdir(modelCktPath)
+
+            model = get_model(model_name)
+
+            torch.save(model,os.path.join(modelCktPath,model_name+".ckpt"))
+
+            numLayers = count_layers(model)
+
+            NumOfLayersJson[model_name] = numLayers
+
+        JsonObject = {}
+
+        if os.path.exists(NumOfLayersJsonFile):
+            with open(NumOfLayersJsonFile,"r")  as F:
+                line = F.readline()
+                JsonObject = json.loads(line)
+        
+        for key, value in NumOfLayersJson.items():
+            if key not in JsonObject:
+                JsonObject[key] = value
+        
+        with open(NumOfLayersJsonFile,"w") as F:
+            json.dump(JsonObject,F)
+
+        self.numLayerDict = JsonObject
+
+            
 
     def iter(self):
         """
@@ -279,17 +374,18 @@ class MappingGenerator:
         # MappingSucess = False
         # while not MappingSucess:
             
+        stageDict = {}
+        for model_name,mapping in Mappings.items():
+            # try:
+            stages = self.create_network_stages(model_name,mapping)
+            stageDict[model_name] = stages
 
-        # for model_name,mapping in Mappings.items():
-        #     # try:
-        #     stages = self.create_network_stages(model_name,mapping)
-        
         self.mapCaseCounts[self.caseIdx] += 1
         self.iterIdx += 1
         print("self.iterIdx: ",self.iterIdx,"  Mappings: ", Mappings)
         print(f"mapCaseCounts: {self.mapCaseCounts}")
 
-        # return stages
+        return stageDict
 
 
             
