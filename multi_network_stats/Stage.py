@@ -30,7 +30,7 @@ class Stage:
         if stagePosition == 2 or stagePosition == 3:
             self.OutputQueue = queue.Queue()
 
-    def forward(self, NextStage: Stage):
+    def forward(self, NextStage: Stage = None):
 
         """Forward the next input present in the input queue and store the output in the output queue.
         
@@ -54,11 +54,14 @@ class Stage:
 
         # If there are stages after this, store the output to the input queue of the next stage
         if self.stagePos == 0 or self.stagePos == 1:
+            if NextStage == None:
+                print("Next stage is should be passed if the stage is at the start or middile of the pipeline")
+                return ValueError
 
             # Set the output to the next stage's device
             if self.device.type != NextStage.device.type:
                 x = x.to(NextStage.device)
-            NextStage.InputQueue.put(x)
+            NextStage.putToQueue(x)
         
         # Put the data to cpu if this stage is at the end
         else:
@@ -70,3 +73,9 @@ class Stage:
     def assignToDevice(self):
         """ Assign the stage to the device."""
         self.layerSet.to(self.device)
+
+
+    def putToQueue(self,x):
+        
+        # Push x to the FIFO queue
+        self.InputQueue.put(x)
