@@ -30,6 +30,9 @@ class Stage:
         if stagePosition == 2 or stagePosition == 3:
             self.OutputQueue = queue.Queue()
 
+        # Number of inferences performed by the stage
+        self.infCount = 0
+
     def forward(self, NextStage: Stage = None):
 
         """Forward the next input present in the input queue and store the output in the output queue.
@@ -79,3 +82,10 @@ class Stage:
         
         # Push x to the FIFO queue
         self.InputQueue.put(x)
+
+    # TODO: add the next stage as a class parameter
+    def run(self,NextStage: Stage = None):
+        while not self.InputQueue.empty():
+            self.forward(NextStage)
+            self.infCount += 1
+        # print("number of inference: ", self.infCount)
