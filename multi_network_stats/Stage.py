@@ -1,4 +1,4 @@
-from __future__ import annotations
+# from __future__ import annotations
 import os, sys
 import torch
 import torch.nn as nn
@@ -33,7 +33,10 @@ class Stage:
         # Number of inferences performed by the stage
         self.infCount = 0
 
-    def forward(self, NextStage: Stage = None):
+        # WHether to to keep the stage active
+        self.stageActive = False
+
+    def forward(self, NextStage= None):  #NextStage: Stage = None):
 
         """Forward the next input present in the input queue and store the output in the output queue.
         
@@ -78,14 +81,23 @@ class Stage:
         self.layerSet.to(self.device)
 
 
-    def putToQueue(self,x):
-        
+    def putToQueue(self,x): 
         # Push x to the FIFO queue
         self.InputQueue.put(x)
 
     # TODO: add the next stage as a class parameter
-    def run(self,NextStage: Stage = None):
+    def run(self,NextStage= None):  #: Stage = None):
+        # self.stageActive = True
         while not self.InputQueue.empty():
             self.forward(NextStage)
             self.infCount += 1
         # print("number of inference: ", self.infCount)
+    
+    def activateStage(self):
+        self.stageActive = True 
+
+    def deactivateStage(self):
+        self.stageActive = False
+    
+    def isStageQueueEmpty(self):
+        return self.InputQueue.empty()

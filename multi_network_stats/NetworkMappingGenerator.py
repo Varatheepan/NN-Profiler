@@ -7,6 +7,7 @@ import numpy as np
 from itertools import permutations
 from copy import deepcopy
 from pathlib import Path
+import collections
 
 from layer_stats.rawDataGeneration.PowerLatencySampler import flatten_layers, count_layers
 from layer_stats.utils.checker import get_model
@@ -21,7 +22,7 @@ class MappingGenerator:
     # class variable
     Instances = []
 
-    def __init__(self, device_list:list = ['cpu', 'cuda'], network_list = ['alexnet','mobilenet_v2'], NumSamples:int = 1000, CaseSamples:list = None, device_prioriy:list = None) -> None:
+    def __init__(self, device_list:list = ['cpu', 'cuda'], network_list = ['alexnet','mobilenet_v2'], NumSamples:int = 1000, CaseSamples:list = None, device_prioriy:list = None, seed: int = 45) -> None:
         """
             Parameters
             ----------
@@ -90,7 +91,7 @@ class MappingGenerator:
         MappingGenerator.addInstance(self)
 
         # Random seeding
-        np.random.seed(45)
+        np.random.seed(seed)
 
     @classmethod
     def addInstance(cls,self):
@@ -234,12 +235,12 @@ class MappingGenerator:
         if len(mapping) == 1:
 
             # Adding all the layers to a sequencial block
-            layerBlock = nn.Sequential()
+            layerBlock = collections.OrderedDict()#nn.ModuleDict()
             for layer in layers:
-                layerBlock.append(layer)
+                layerBlock['0'] = layer
             
             # Creating a stage 
-            stage = Stage(torch.device(list(mapping.values())[0]),layerBlock,stagePosition=3)
+            stage = Stage(torch.device(list(mapping.values())[0]),nn.Sequential(layerBlock),stagePosition=3)
             stages.append(stage)
 
         # For networks split among devices
@@ -262,36 +263,36 @@ class MappingGenerator:
                 
                 # An intermediate stage: for more than two stages
                 if idx > 0 and idx < numMaps - 1:
-                    layerBlock = nn.Sequential()
+                    layerBlock = collections.OrderedDict()#nn.ModuleDict()
                     for layer in layers[orderedIdx[idx-1]+1:layerIDX+1]:
                         op_name = model_name+"_"+str(layer_ID)
                         if op_name in self.op_executor.operations:
-                            layerBlock.append(self.op_executor.operations[op_name][0])
+                            layerBlock[str(layer_ID)+"_op"]= self.op_executor.operations[op_name][0]
                         layer_ID += 1
-                        layerBlock.append(layer)
-                    stage = Stage(torch.device(Devices[idx]),layerBlock,stagePosition=1)
+                        layerBlock[str(layer_ID)] = layer
+                    stage = Stage(torch.device(Devices[idx]),nn.Sequential(layerBlock),stagePosition=1)
 
                 # First stage of a network pipeline 
                 elif idx == 0:
-                    layerBlock = nn.Sequential()
+                    layerBlock = collections.OrderedDict()#nn.ModuleDict()
                     for layer in layers[:layerIDX+1]:
                         op_name = model_name+"_"+str(layer_ID)
                         if op_name in self.op_executor.operations and layer_ID != 0:
-                            layerBlock.append(self.op_executor.operations[op_name][0])
+                            layerBlock[str(layer_ID)+"_op"]= self.op_executor.operations[op_name][0]
                         layer_ID += 1
-                        layerBlock.append(layer)
-                    stage = Stage(torch.device(Devices[idx]),layerBlock,stagePosition=0)
+                        layerBlock[str(layer_ID)] = layer
+                    stage = Stage(torch.device(Devices[idx]),nn.Sequential(layerBlock),stagePosition=0)
                 
                 # Last stage of network pipeline
                 else:
-                    layerBlock = nn.Sequential()
+                    layerBlock = collections.OrderedDict()#nn.ModuleDict()
                     for layer in layers[orderedIdx[idx-1]+1:]:
                         op_name = model_name+"_"+str(layer_ID)
                         if op_name in self.op_executor.operations:
-                            layerBlock.append(self.op_executor.operations[op_name][0])
+                            layerBlock[str(layer_ID)+"_op"]= self.op_executor.operations[op_name][0]
                         layer_ID += 1
-                        layerBlock.append(layer)
-                    stage = Stage(torch.device(Devices[idx]),layerBlock,stagePosition=2)
+                        layerBlock[str(layer_ID)] = layer
+                    stage = Stage(torch.device(Devices[idx]),nn.Sequential(layerBlock),stagePosition=2)
                 
                 stages.append(stage)               
 
