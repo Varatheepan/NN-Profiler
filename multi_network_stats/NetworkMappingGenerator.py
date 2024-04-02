@@ -373,7 +373,7 @@ class MappingGenerator:
 
             
 
-    def iter(self):
+    def iter(self, Mappings:dict = None):
         """
         Create a new mapping sample
         """
@@ -382,12 +382,18 @@ class MappingGenerator:
             return False
         
         # TODO:Generate a random image and preporcess according to the op executers
+        
+        MapValid = False
 
-        if self.mapCaseCounts[self.caseIdx] != self.mapCases[self.caseIdx]:
-            Mappings = self.generate_mapping(self.caseIdx)
-        else:
-            self.caseIdx +=1
-            Mappings = self.generate_mapping(self.caseIdx)
+        if Mappings != None:
+            MapValid = self.validateMapping(Mappings)
+
+        if MapValid == False:
+            if self.mapCaseCounts[self.caseIdx] != self.mapCases[self.caseIdx]:
+                Mappings = self.generate_mapping(self.caseIdx)
+            else:
+                self.caseIdx +=1
+                Mappings = self.generate_mapping(self.caseIdx)
 
         # TODO: implement a memory overflow management
         # MappingSucess = False
@@ -406,8 +412,35 @@ class MappingGenerator:
 
         return stageDict
 
+    def validateMapping(self,Mappings):
+        numMappings = len(Mappings)
+
+        if numMappings != len(self.network_list):
+            print("Not all the networks are mapped. Invalid mapping!")
+            return False
+            
+        for model_name in Mappings.keys():
+            if model_name not in self.network_list:
+                print(f"IModel `{model_name}` not in network list. Invalid mapping")
+                return False
+            
+            if len(Mappings[model_name]) == 0:
+                print(f"Mapping for `{model_name}`is Invalid!")
+                return False
+            
+            for device in Mappings[model_name].values():
+                if device not in self.device_list:
+                    print(f"Device `{device}` not in device list. `{model_name}` mapping is Invalid!")
+                    return False
+            
+            for layerIdx in Mappings[model_name].keys():
+                if layerIdx> self.numLayerDict[model_name]:
+                    print(f"Layer index exceeded. Mapping for `{model_name}`is Invalid!")
+                    return False
+        return True
+
+
+
 
             
-
-
         
