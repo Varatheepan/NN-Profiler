@@ -33,8 +33,11 @@ class Stage:
         # Number of inferences performed by the stage
         self.infCount = 0
 
-        # WHether to to keep the stage active
+        # Whether to to keep the stage active
         self.stageActive = False
+
+        # Whether the stage is running active inference
+        self.stageRunning = False
 
     def forward(self, NextStage= None):  #NextStage: Stage = None):
 
@@ -45,6 +48,11 @@ class Stage:
         NextStage:
             Next stage in the pipeline of the NN
         """
+
+        # set the status of the stage to running
+        self.stageRunning = True
+
+        # if self.stagePos == 0 or self.stagePos == 
         
         # Retrieve input from the queue
         x = self.InputQueue.get()
@@ -86,12 +94,27 @@ class Stage:
         self.InputQueue.put(x)
 
     # TODO: add the next stage as a class parameter
-    def run(self,NextStage= None):  #: Stage = None):
+    def run(self,PrevStage = None,NextStage= None):  #: Stage = None):
         # self.stageActive = True
-        while not self.InputQueue.empty():
-            self.forward(NextStage)
-            self.infCount += 1
-        # print("number of inference: ", self.infCount)
+        
+        # Run the forward until all the images in the input queue are processed
+        
+        # If a prevoius stage exist, wait until it finishes
+        if PrevStage != None:
+            while (not self.InputQueue.empty()) or (PrevStage.stageRunning):
+                if not self.InputQueue.empty():
+                    self.forward(NextStage)
+                    self.infCount += 1
+                # print(f"self.infCount: {self.infCount}, PrevStage.infCount: {PrevStage.infCount}")
+        else:
+            while not self.InputQueue.empty():
+                self.forward(NextStage)
+                self.infCount += 1
+        
+        # set the status of the stage as finished
+        self.stageRunning = False
+
+        # print("Stage: ", self.stagePos,", number of inference: ", self.infCount)
     
     def activateStage(self):
         self.stageActive = True 
