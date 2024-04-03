@@ -176,7 +176,7 @@ class MappingGenerator:
 
         if self.num_devices == 0:
             print("Device list is empty!")
-        if self.num_devices == 1:
+        elif self.num_devices == 1:
             for model_name in model_list:
                 mapping[model_name] = {self.numLayerDict[model_name]:self.device_list[0]}
 
@@ -241,13 +241,16 @@ class MappingGenerator:
         # Network with a stand-alone stage
         if len(mapping) == 1:
 
-            # Adding all the layers to a sequencial block
-            layerBlock = collections.OrderedDict()#nn.ModuleDict()
-            for layer in layers:
-                layerBlock['0'] = layer
+            # # Adding all the layers to a sequencial block
+            # layerBlock = collections.OrderedDict()#nn.ModuleDict()
+            # for layer in layers:
+            #     layerBlock['0'] = layer
+
+            modelCkptPath = os.path.join(projectPath,"ModelCheckPoints",model_name,model_name+".ckpt")
+            model = torch.load(modelCkptPath)
             
             # Creating a stage 
-            stage = Stage(torch.device(list(mapping.values())[0]),nn.Sequential(layerBlock),stagePosition=3)
+            stage = Stage(torch.device(list(mapping.values())[0]),nn.Sequential(model),stagePosition=3)
             stages.append(stage)
 
         # For networks split among devices

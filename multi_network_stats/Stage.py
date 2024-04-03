@@ -83,6 +83,23 @@ class Stage:
                 x = x.to('cpu')
             self.OutputQueue.put(x)
 
+    def forwardSeq(self,x):  #NextStage: Stage = None):
+
+        """Forward the next input present in the input queue and store the output in the output queue.
+        
+        Parameters
+        ----------
+        NextStage:
+            Next stage in the pipeline of the NN
+        """
+
+        # For the first stage set the device
+        if x.device.type != self.device.type:
+            x = x.to(self.device)
+        # Run inference 
+        x = self.layerSet(x)
+
+        return x
 
     def assignToDevice(self):
         """ Assign the stage to the device."""
@@ -97,8 +114,11 @@ class Stage:
     def run(self,PrevStage = None,NextStage= None):  #: Stage = None):
         # self.stageActive = True
         
+        # set the status of the stage as Running
+        self.stageRunning = True
+
         # Run the forward until all the images in the input queue are processed
-        
+
         # If a prevoius stage exist, wait until it finishes
         if PrevStage != None:
             while (not self.InputQueue.empty()) or (PrevStage.stageRunning):
