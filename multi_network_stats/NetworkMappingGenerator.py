@@ -159,7 +159,7 @@ class MappingGenerator:
 
     def generate_mapping(self, case):
         """
-        TODO: Not completed yet
+        TODO: Handle if only one device is present.  --implemented
         Split the layers into stages(num stages <= num_devices) and assign a device for each stage.
         """     
         
@@ -174,48 +174,55 @@ class MappingGenerator:
         # Object for network mappings
         mapping = {}
 
-        # Models to run in a stand-alone stage
-        Sts_models = np.random.choice(model_list,NumSts,replace=False)
+        if self.num_devices == 0:
+            print("Device list is empty!")
+        if self.num_devices == 1:
+            for model_name in model_list:
+                mapping[model_name] = {self.numLayerDict[model_name]:self.device_list[0]}
 
-        # Random selection of devices for each stand-alone stage
-        for model_name in Sts_models:
-            mapping[model_name] = {self.numLayerDict[model_name]:np.random.choice(self.device_list,1,replace=True,p = self.deviceProb)[0]}
-        
-        # List of models to be splitted among some devices
-        Spl_models = [model_name for model_name in model_list if model_name not in Sts_models]
+        else:
+            # Models to run in a stand-alone stage
+            Sts_models = np.random.choice(model_list,NumSts,replace=False)
 
-        for model_name in Spl_models:
-            mapping[model_name] = {}
-            devices = deepcopy(self.device_list)
+            # Random selection of devices for each stand-alone stage
+            for model_name in Sts_models:
+                mapping[model_name] = {self.numLayerDict[model_name]:np.random.choice(self.device_list,1,replace=True,p = self.deviceProb)[0]}
             
-            # Maximum possible number of model breaking points
-            numSplits = self.num_devices-1
+            # List of models to be splitted among some devices
+            Spl_models = [model_name for model_name in model_list if model_name not in Sts_models]
 
-            # Random selection of number of breaks
-            if numSplits != 1:
-                numSplits = np.random.randint(1,numSplits+1)
-            
-            # Random selection of layer layer indexes to split
-            splitPoints = np.random.choice(range(self.numLayerDict[model_name]-1),numSplits,replace=False)
+            for model_name in Spl_models:
+                mapping[model_name] = {}
+                devices = deepcopy(self.device_list)
+                
+                # Maximum possible number of model breaking points
+                numSplits = self.num_devices-1
 
-            # Sorting the selected layer indexes
-            splitPoints = sorted(splitPoints)
+                # Random selection of number of breaks
+                if numSplits != 1:
+                    numSplits = np.random.randint(1,numSplits+1)
+                
+                # Random selection of layer layer indexes to split
+                splitPoints = np.random.choice(range(self.numLayerDict[model_name]-1),numSplits,replace=False)
 
-            # Random seletcion of devices for each split set of layers
-            stageDevices = np.random.choice(devices, numSplits+1, replace=False,p = self.deviceProb)
-            # print("splitPoints: ", splitPoints, "stageDevices: ", stageDevices)
+                # Sorting the selected layer indexes
+                splitPoints = sorted(splitPoints)
 
-            # Formatting the mapping 
-            for idx,selDevice in enumerate(stageDevices):
+                # Random seletcion of devices for each split set of layers
+                stageDevices = np.random.choice(devices, numSplits+1, replace=False,p = self.deviceProb)
+                # print("splitPoints: ", splitPoints, "stageDevices: ", stageDevices)
 
-                # Pair of layer number and a device. 
-                # A stage associated with a pair will consist of of the layers after the prevois set upto the current layer index(inclusive).
-                if idx >= 0 and idx < len(splitPoints):
-                    mapping[model_name][splitPoints[idx]] = selDevice
-                # elif idx == 0:
-                #     mapping[model_name][splitPoints[idx]] = selDevice
-                else:
-                    mapping[model_name][self.numLayerDict[model_name]] = selDevice
+                # Formatting the mapping 
+                for idx,selDevice in enumerate(stageDevices):
+
+                    # Pair of layer number and a device. 
+                    # A stage associated with a pair will consist of of the layers after the prevois set upto the current layer index(inclusive).
+                    if idx >= 0 and idx < len(splitPoints):
+                        mapping[model_name][splitPoints[idx]] = selDevice
+                    # elif idx == 0:
+                    #     mapping[model_name][splitPoints[idx]] = selDevice
+                    else:
+                        mapping[model_name][self.numLayerDict[model_name]] = selDevice
         return mapping
     
 
@@ -303,25 +310,31 @@ class MappingGenerator:
         # Number cases to be considered
         num_cases = len(self.network_list) + 1
 
-        if not CaseSamples or len(CaseSamples) < num_cases:
+        if self.num_devices == 1:
+            self.mapCases = [NumSamples]
+            self.mapCaseCounts = [0]
+
+        else:
+            if not CaseSamples or len(CaseSamples) < num_cases:
             
-            # A function to determine the number of sample to generate per case
-            W = np.array([np.exp(-0.5*val) for val in range(num_cases)])
+                # A function to determine the number of sample to generate per case
+                W = np.array([np.exp(-0.5*val) for val in range(num_cases)])
 
-            normalizedW = W/W.sum()
+                normalizedW = W/W.sum()
 
-            # Mapping samples to generate per case
-            CaseSamples = [int(val*NumSamples) for val in normalizedW]
+                # Mapping samples to generate per case
+                CaseSamples = [int(val*NumSamples) for val in normalizedW]
 
-            # Assign reamaining sample to case 0 to meet the total num of samples
-            CaseSamples[0] = CaseSamples[0] + (NumSamples - sum(CaseSamples))
+                # Assign remaining sample to case 0 to meet the total num of samples
+                CaseSamples[0] = CaseSamples[0] + (NumSamples - sum(CaseSamples))
 
-            if len(CaseSamples) < num_cases: print(F"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
-            
-        # The array of cases with keys denoting the number of stand alone network stages and the values are the total number of generated examples.
-        # The rest of the networks will be splitted among devices randomly.
-        self.mapCases = [val for key,val in enumerate(CaseSamples)]
-        self.mapCaseCounts = [0]*num_cases
+                if len(CaseSamples) < num_cases: print(F"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
+                
+            # The array of cases with keys denoting the number of stand alone network stages and the values are the total number of generated examples.
+            # The rest of the networks will be splitted among devices randomly.
+            self.mapCases = [val for key,val in enumerate(CaseSamples)]
+
+            self.mapCaseCounts = [0]*num_cases
 
         print("self.mapCases: ",self.mapCases)
 
