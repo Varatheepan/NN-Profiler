@@ -3,6 +3,8 @@ import os, sys
 import torch
 import torch.nn as nn
 import queue
+from copy import deepcopy
+import time
 
 # This class will handle a subset of layers of a network to run on a device
 class Stage:
@@ -19,7 +21,7 @@ class Stage:
         self.assignToDevice()
         
         # A queue to buffer the inputs to the stage
-        self.InputQueue = queue.Queue(InOutBuf)  
+        self.InputQueue = None
 
         # # A queue to buffer the inputs to the stage
         # self.OutputQueue = OutPutQueue    
@@ -28,7 +30,7 @@ class Stage:
         self.stagePos = stagePosition       
         
         if stagePosition == 2 or stagePosition == 3:
-            self.OutputQueue = queue.Queue()
+            self.OutputQueue = queue.Queue(-1)
 
         # Number of inferences performed by the stage
         self.infCount = 0
@@ -39,7 +41,7 @@ class Stage:
         # Whether the stage is running active inference
         self.stageRunning = False
 
-    def forward(self, NextStage= None):  #NextStage: Stage = None):
+    def forward(self, x, NextStage= None):  #NextStage: Stage = None):
 
         """Forward the next input present in the input queue and store the output in the output queue.
         
@@ -49,13 +51,15 @@ class Stage:
             Next stage in the pipeline of the NN
         """
 
-        # set the status of the stage to running
-        self.stageRunning = True
+        # # set the status of the stage to running
+        # self.stageRunning = True
 
         # if self.stagePos == 0 or self.stagePos == 
         
-        # Retrieve input from the queue
-        x = self.InputQueue.get()
+        # # Retrieve input from the queue
+        # x = deepcopy(self.InputQueue)
+
+        # self.InputQueue = None
 
         # For the first stage set the device
         if (self.stagePos == 0 or self.stagePos == 3) and x.device.type != self.device.type:
@@ -82,6 +86,8 @@ class Stage:
             if self.device.type != 'cpu':
                 x = x.to('cpu')
             self.OutputQueue.put(x)
+        
+        return True
 
     def forwardSeq(self,x):  #NextStage: Stage = None):
 
@@ -98,6 +104,7 @@ class Stage:
             x = x.to(self.device)
         # Run inference 
         x = self.layerSet(x)
+        self.infCount += 1
 
         return x
 
@@ -108,11 +115,12 @@ class Stage:
 
     def putToQueue(self,x): 
         # Push x to the FIFO queue
-        self.InputQueue.put(x)
+        self.InputQueue = x
 
     # TODO: add the next stage as a class parameter
-    def run(self,PrevStage = None,NextStage= None):  #: Stage = None):
-        # self.stageActive = True
+    # def run(self,PrevStage = None,NextStage= None):  #: Stage = None):
+    def run(self,NextStage= None, image = None):  #: Stage = None):
+        self.stageActive = True
         
         # set the status of the stage as Running
         self.stageRunning = True
@@ -120,16 +128,47 @@ class Stage:
         # Run the forward until all the images in the input queue are processed
 
         # If a prevoius stage exist, wait until it finishes
-        if PrevStage != None:
-            while (not self.InputQueue.empty()) or (PrevStage.stageRunning):
-                if not self.InputQueue.empty():
-                    self.forward(NextStage)
-                    self.infCount += 1
-                # print(f"self.infCount: {self.infCount}, PrevStage.infCount: {PrevStage.infCount}")
-        else:
-            while not self.InputQueue.empty():
-                self.forward(NextStage)
+        # if PrevStage != None:
+        if self.stagePos == 3:
+            while (self.stageActive):
+                # Input image for first stage
+                # self.InputQueue = image 
+                result = self.forward(image)
                 self.infCount += 1
+        elif self.stagePos == 0:
+            while (self.stageActive):
+                if NextStage.InputQueue == None:
+                    # self.InputQueue = image
+                    result = self.forward(image,NextStage)
+                    self.infCount += 1
+                else:
+                    time.sleep(0.005)
+        elif self.stagePos == 1:
+            while (self.stageActive):
+                if self.InputQueue != None and NextStage.InputQueue == None:
+                    # Retrieve input from the queue
+                    x = self.InputQueue.detach().clone()
+                    self.InputQueue = None
+                    result = self.forward(x,NextStage)
+                    self.infCount += 1
+                else:
+                    time.sleep(0.005)
+
+        else:
+            while (self.stageActive):
+                if self.InputQueue != None:
+                    # Retrieve input from the queue
+                    x = self.InputQueue.detach().clone()
+                    self.InputQueue = None
+                    result = self.forward(x)
+                    self.infCount += 1
+                else:
+                    time.sleep(0.005)
+            # print(f"self.infCount: {self.infCount}, PrevStage.infCount: {PrevStage.infCount}")
+        # else:
+        #     while not self.InputQueue.empty():
+        #         self.forward(NextStage)
+        #         self.infCount += 1
         
         # set the status of the stage as finished
         self.stageRunning = False
@@ -144,3 +183,5 @@ class Stage:
     
     def isStageQueueEmpty(self):
         return self.InputQueue.empty()
+
+
