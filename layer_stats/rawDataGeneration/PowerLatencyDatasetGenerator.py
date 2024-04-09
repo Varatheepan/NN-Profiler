@@ -26,7 +26,7 @@ def arguments_parser():
                         Images should be stored in data/imagenet.")
     
     # Tegratstats related parameters
-    parser.add_argument("--tgr_params", default=["RAM", "SWAP","CPU","EMC_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR"],\
+    parser.add_argument("--tgr_params", default=["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR"],\
                         nargs='+' ,help="A space seperatedlist of parameters from the defaults list of parameters to extract from tegratstats.")
     parser.add_argument("--eval_tgr", action='store_true' ,help="Whether to evaluate tegrastats parameters. Intended for power evaluation.")
     parser.add_argument("--tgr_interval", default=20,type=int, help="The tegrastats data sampling interval. Data sampled at every `tgr_interval` mS time.")
@@ -58,7 +58,7 @@ def InitializeParams(args):
     if args.eval_tgr:
 
         # Available Parameters to be sampled from tegrastats. Listed in the order params appear in the command output.
-        AvailParams = ["RAM", "SWAP","CPU","EMC_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR"]
+        AvailParams = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR"]
 
         ''' Parameters which might be usful to capture for this project are listed. Check Tegrastats to find other parameters
         "VDD_SYS_CPU"   : CPU Power usage      
