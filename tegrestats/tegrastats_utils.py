@@ -21,7 +21,7 @@ def analyze_power_stats(txt_file: str, device,parameters: list):
                 if txt == parameters[paramIndex]:
 
                     # Power parameters, RAM and SWAP parameters
-                    if (txt != "CPU") and (txt != "EMC_FREQ"): 
+                    if (txt != "CPU") and (txt != "EMC_FREQ") and (txt != "GR3D_FREQ"): 
                         tempval = int(lineSplit[i+1].split("/")[0])
                         Readings[txt].append(tempval)
                         paramIndex += 1
@@ -47,8 +47,22 @@ def analyze_power_stats(txt_file: str, device,parameters: list):
                     
                     # Entries for RAM frequency
                     elif txt == "EMC_FREQ":
+                        if len(Readings["EMC_FREQ"]) == 0:
+                            Readings["EMC_FREQ"] = {"Utilization":[],"Frequencies":[]}
                         tempvals = lineSplit[i+1].split("%@")
-                        Readings["EMC_FREQ"] = {"Utilization":int(tempvals[0]),"Frequencies":int(tempvals[1])}
+                        # Readings["EMC_FREQ"] = {"Utilization":int(tempvals[0]),"Frequencies":int(tempvals[1])}
+                        Readings["EMC_FREQ"]["Utilization"].append(int(tempvals[0]))
+                        Readings["EMC_FREQ"]["Frequencies"].append(int(tempvals[1])) 
+                        paramIndex +=  1
+
+                    # Entries for RAM frequency
+                    elif txt == "GR3D_FREQ":
+                        if len(Readings["GR3D_FREQ"]) == 0:
+                            Readings["GR3D_FREQ"] = {"Utilization":[],"Frequencies":[]}
+                        tempvals = lineSplit[i+1].split("%@")
+                        # Readings["GR3D_FREQ"] = {"Utilization":int(tempvals[0]),"Frequencies":int(tempvals[1])}
+                        Readings["GR3D_FREQ"]["Utilization"].append(int(tempvals[0]))
+                        Readings["GR3D_FREQ"]["Frequencies"].append(int(tempvals[1])) 
                         paramIndex +=  1
 
                 
