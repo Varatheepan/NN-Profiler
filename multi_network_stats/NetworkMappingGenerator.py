@@ -423,10 +423,10 @@ class MappingGenerator:
 
         self.mapCaseCounts[self.caseIdx] += 1
         self.iterIdx += 1
-        print("self.iterIdx: ",self.iterIdx,"  Mappings: ", Mappings)
+        # print("self.iterIdx: ",self.iterIdx,"  Mappings: ", Mappings)
         print(f"mapCaseCounts: {self.mapCaseCounts}")
 
-        return stageDict
+        return stageDict,Mappings
 
     def validateMapping(self,Mappings):
         numMappings = len(Mappings)
