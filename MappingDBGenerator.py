@@ -13,6 +13,8 @@ from pathlib import Path
 import subprocess
 import signal
 import random
+import numpy as np
+import gc
 
 from multi_network_stats.Stage import Stage
 from multi_network_stats.NetworkMappingGenerator import MappingGenerator
@@ -60,7 +62,7 @@ def arguments_parser():
     parser.add_argument("--tgr_params", default=["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR", "VDD_IN"],\
                         nargs='+' ,help="A space seperatedlist of parameters from the defaults list of parameters to extract from tegratstats.")
     parser.add_argument("--eval_tgr", action='store_true' ,help="Whether to evaluate tegrastats parameters. Intended for power evaluation.")
-    parser.add_argument("--tgr_interval", default=20,type=int, help="The tegrastats data sampling interval. Data sampled at every `tgr_interval` mS time.")
+    parser.add_argument("--tgr_interval", default=50,type=int, help="The tegrastats data sampling interval. Data sampled at every `tgr_interval` mS time.")
     # parser.add_argument("--smpl_duration", default=30, type=int, help="The time duration to run sample tegrastats data for a layer.")
     parser.add_argument("--tgr_smpl_boundry", default=2, type=int, help="Time window allowed for the tegratstats to stablize for the layer being experimented")
 
@@ -127,48 +129,109 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
     try:
 
         sampling_freq = 1000.0/args.tgr_interval
+        tgr_NS = int((1000/args.tgr_interval)*args.smpl_duration) 
 
         model_list = args.model_list
         random.shuffle(model_list)
 
-        num_model = random.randint(4,11)
+        NumModelsCases = range(5,11)
 
-        # TODO: Determine the number of parallel network cases (eg: range(4,11)). Randomly sample n number of network.
-        MapperObj = MappingGenerator(args.device_list,model_list[:num_model],NumSamples=args.num_samples,device_prioriy = args.device_priorities, seed=randSeed)
+        NumCases = len(NumModelsCases)
+
+        ModelsPerCases = [int(args.num_samples/NumCases)]*NumCases
+
+        for i in range(args.num_samples%NumCases):
+            ModelsPerCases[-(i+1)] += 1
+        print(f"ModelsPerCase: {ModelsPerCases}")
+
+        GeneratedModelsPerCases = [0]*NumCases
+
+        caseIdx = 0
 
         image = Image.open("data/imagenet/img1.jpg")
-
         image = default_preprocess(image)
-
         image = image.unsqueeze(0)
 
         numProcessedMappings = 0
 
-        while numProcessedMappings < args.num_samples:
-            ObjStages = []
-            mapping = []
-            ObjStages,mapping = MapperObj.iter()
+        # while GeneratedModelsPerCases[caseIdx] < ModelsPerCases[caseIdx]:
+        for caseIdx in range(NumCases):
 
-            InferenceCount, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image)
+            print(f"running case {caseIdx}")
 
-            numProcessedMappings += 1
+            # Number of MappingeGenerator objects created for the current case
+            NumObjs = 0
 
+            while GeneratedModelsPerCases[caseIdx] < ModelsPerCases[caseIdx]:
 
-            if not os.path.exists(os.path.join(project_path, 'Dataset/Multinet', ModeS)):
-                os.makedirs(os.path.join(project_path, 'Dataset/Multinet', ModeS))
-            # File name to store the collected data power samples
-            # stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/Map{numProcessedMappings}_sf_{sampling_freq}_sb_{args.tgr_smpl_boundry}.json"
-            stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/Map{numProcessedMappings}_sf_{sampling_freq}.json"
-            
+                # Number of mappings to generate from each object
+                SmplPerObj = 20 #int(min(20,ModelsPerCases[caseIdx], ModelsPerCases[caseIdx] - 20*NumObjs))
 
-            mappingS = {}
-            for net, mapN in mapping.items():
-                mappingS[net] = {str(ID):dev for ID,dev in mapping[net].items()}
-            outJson = {"mapping":mappingS,"throughput": InferenceCount, "power":power_stats,"samplingDuration":args.smpl_duration}
+                # Randomly choose n number of  models accroding to the case
+                Model_set = np.random.choice(model_list,NumModelsCases[caseIdx], replace = False)
 
-            # Write data to a json file
-            with open(stats_file_name, "w") as stats_file:
-                json.dump(outJson,stats_file)
+                # TODO: Determine the number of parallel network cases (eg: range(4,11)). Randomly sample n number of network. --> Done
+                MapperObj = MappingGenerator(args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
+
+                ObjStages,mapping = MapperObj.iter()
+
+                while ObjStages != False:
+                    # ObjStages = []
+                    # mapping = []
+                    # ObjStages,mapping = MapperObj.iter()
+
+                    print(f"Mapping {numProcessedMappings}")
+
+                    if args.eval_tgr:
+                        InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
+                    else:
+                        InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image)
+                    
+
+                    numProcessedMappings += 1
+
+                    # Path to store the mapping data samples
+                    if not os.path.exists(os.path.join(project_path, 'Dataset/Multinet', ModeS)):
+                        os.makedirs(os.path.join(project_path, 'Dataset/Multinet', ModeS))
+
+                    # File name to store the mapping data samples
+                    # stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/Map{numProcessedMappings}_sf_{sampling_freq}_sb_{args.tgr_smpl_boundry}.json"
+                    stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/Map{numProcessedMappings}_nm_{NumModelsCases[caseIdx]}_sf_{sampling_freq}.json"
+                    
+                    # Convert the mapping object keys to strings 
+                    mappingS = {}
+                    for net, mapN in mapping.items():
+                        mappingS[net] = {str(ID):dev for ID,dev in mapping[net].items()}
+                    outJson = {"mapping":mappingS,"stageSummary": InferenceSummary, "power":power_stats,"samplingDuration":args.smpl_duration}
+
+                    # Write data to a json file
+                    with open(stats_file_name, "w") as stats_file:
+                        json.dump(outJson,stats_file)
+
+                    # Inceremenet the number of samples counter of the current case 
+                    GeneratedModelsPerCases[caseIdx] += 1
+
+                    ObjStages = []
+                    mapping = []
+
+                    # Remove the object stages from  memory
+                    del ObjStages
+                    gc.collect()
+
+                    ObjStages,mapping = MapperObj.iter()
+
+                    print("\n")
+                
+                # NumObjs += 1
+
+            # # Change the case index if defined number of sameple are generated for the currenet case
+            # if int(GeneratedModelsPerCases[caseIdx]) == int(ModelsPerCases[caseIdx]):
+            #     if caseIdx == NumCases - 1:
+            #         print("Dataset generation completed!")
+            #         break 
+            #     else:
+            #         caseIdx += 1
+        print("Dataset generation completed!")
 
     except Exception as e1:
         print("Error: ", e1)

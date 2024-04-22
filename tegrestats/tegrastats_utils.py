@@ -78,7 +78,7 @@ def analyze_power_stats(txt_file: str, device,parameters: list):
                     break
         return Readings
     except Exception as e:
-        print(f"txt: `{txt}` next txt: {lineSplit[i+1]} split: {lineSplit[i+1].split('/')} Param: {parameters[paramIndex]}")
+        # print(f"txt: `{txt}` next txt: {lineSplit[i+1]} split: {lineSplit[i+1].split('/')} Param: {parameters[paramIndex]}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         print(exc_type, fname, exc_tb.tb_lineno)

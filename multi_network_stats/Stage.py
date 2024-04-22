@@ -5,6 +5,7 @@ import torch.nn as nn
 import queue
 from copy import deepcopy
 import time
+import gc
 
 # This class will handle a subset of layers of a network to run on a device
 class Stage:
@@ -41,6 +42,9 @@ class Stage:
         # Whether the stage is running active inference
         self.stageRunning = False
 
+        # Time taken for inferences in the stage
+        self.inferDurations = []
+
     def forward(self, x, NextStage= None):  #NextStage: Stage = None):
 
         """Forward the next input present in the input queue and store the output in the output queue.
@@ -65,7 +69,15 @@ class Stage:
         if (self.stagePos == 0 or self.stagePos == 3) and x.device.type != self.device.type:
             x = x.to(self.device)
         # Run inference 
-        x = self.layerSet(x)
+
+        t1 = time.time()
+
+        with torch.no_grad():
+            x = self.layerSet(x)
+
+        t2 = time.time()
+
+        self.inferDurations.append(t2-t1)
 
         # # Store the output to the output queue
         # self.OutputQueue.put(x)
@@ -102,8 +114,16 @@ class Stage:
         # For the first stage set the device
         if x.device.type != self.device.type:
             x = x.to(self.device)
+
+        t1 = time.time()
+        
         # Run inference 
-        x = self.layerSet(x)
+        with torch.no_grad():
+            x = self.layerSet(x)
+
+        t2 = time.time()
+
+        self.inferDurations.append(t2-t1)
         self.infCount += 1
 
         return x
@@ -183,5 +203,10 @@ class Stage:
     
     def isStageQueueEmpty(self):
         return self.InputQueue.empty()
+    
+    def removeStage(self):
+        self.layerSet.cpu()
+        del self.layerSet
+        gc.collect()
 
 

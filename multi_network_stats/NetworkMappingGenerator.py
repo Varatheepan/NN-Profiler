@@ -321,16 +321,21 @@ class MappingGenerator:
             if not CaseSamples or len(CaseSamples) < num_cases:
             
                 # A function to determine the number of sample to generate per case
-                W = np.array([np.exp(-0.5*val) for val in range(num_cases)])
+                # W = np.array([np.exp(-0.5*val) for val in range(num_cases)])
+                W = np.array([1.0/num_cases for val in range(num_cases)])
 
                 normalizedW = W/W.sum()
 
                 # Mapping samples to generate per case
                 CaseSamples = [int(val*NumSamples) for val in normalizedW]
 
-                # Assign remaining sample to case 0 to meet the total num of samples
-                CaseSamples[0] = CaseSamples[0] + (NumSamples - sum(CaseSamples))
-
+                # # Assign remaining sample to case 0 to meet the total num of samples
+                # CaseSamples[0] = CaseSamples[0] + (NumSamples - sum(CaseSamples))
+                
+                # Assign remaining samples across the cases
+                for i1 in range(NumSamples % num_cases):
+                    CaseSamples[i1] += 1
+                
                 if len(CaseSamples) < num_cases: print(F"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
                 
             # The array of cases with keys denoting the number of stand alone network stages and the values are the total number of generated examples.
@@ -395,7 +400,7 @@ class MappingGenerator:
         """
 
         if self.iterIdx == self.NumSamples:
-            return False
+            return False, False
         
         # TODO:Generate a random image and preporcess according to the op executers
         
