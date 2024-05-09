@@ -12,8 +12,8 @@ import json
 # Project path
 project_path = Path(__file__).resolve().parents[2]
 
-AvailModes = os.listdir(os.path.join(project_path,"Dataset"))
-AvailModes = [int(mode.split("Mode")[1]) for mode in AvailModes if (os.path.isdir(os.path.join(project_path,"Dataset",mode)) and "Mode" in mode)]
+AvailModes = os.listdir(os.path.join(project_path,"Dataset/LayerStats"))
+AvailModes = [int(mode.split("Mode")[1]) for mode in AvailModes if (os.path.isdir(os.path.join(project_path,"Dataset/LayerStats",mode)) and "Mode" in mode)]
 
 def arguments_parser():
     parser = argparse.ArgumentParser(
@@ -47,7 +47,7 @@ def processModeStats(args):
             ModeWiseNetworks[modeID] = []
 
             # PAth of the selected mode
-            ModeRoot = os.path.join(project_path,"Dataset","Mode"+str(modeID))
+            ModeRoot = os.path.join(project_path,"Dataset/LayerStats","Mode"+str(modeID))
             
             # Devices available in the mode
             Devices = os.listdir(ModeRoot)

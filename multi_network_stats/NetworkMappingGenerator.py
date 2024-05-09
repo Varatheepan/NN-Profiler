@@ -368,13 +368,13 @@ class MappingGenerator:
             if not os.path.exists(modelCktPath):
                 os.mkdir(modelCktPath)
 
-            model = get_model(model_name)
+                model = get_model(model_name)
 
-            torch.save(model,os.path.join(modelCktPath,model_name+".ckpt"))
+                torch.save(model,os.path.join(modelCktPath,model_name+".ckpt"))
 
-            numLayers = count_layers(model)
+                numLayers = count_layers(model)
 
-            NumOfLayersJson[model_name] = numLayers
+                NumOfLayersJson[model_name] = numLayers
 
         JsonObject = {}
 

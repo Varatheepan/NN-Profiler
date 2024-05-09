@@ -128,6 +128,8 @@ def InitializeParams(args):
 def WorkloadDataGenerator(args, ModeS, Parameters):
     try:
 
+        trailRun = True
+
         sampling_freq = 1000.0/args.tgr_interval
         tgr_NS = int((1000/args.tgr_interval)*args.smpl_duration) 
 
@@ -170,6 +172,12 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                 # Randomly choose n number of  models accroding to the case
                 Model_set = np.random.choice(model_list,NumModelsCases[caseIdx], replace = False)
 
+                if trailRun:
+                    MapperObj = MappingGenerator(args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
+                    ObjStages,mapping = MapperObj.iter()
+                    InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
+                    trailRun = False
+
                 # TODO: Determine the number of parallel network cases (eg: range(4,11)). Randomly sample n number of network. --> Done
                 MapperObj = MappingGenerator(args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
 
@@ -187,7 +195,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     else:
                         InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image)
                     
-
+                    # if not trailRun:
                     numProcessedMappings += 1
 
                     # Path to store the mapping data samples
@@ -203,7 +211,8 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     for net, mapN in mapping.items():
                         mappingS[net] = {str(ID):dev for ID,dev in mapping[net].items()}
                     outJson = {"mapping":mappingS,"stageSummary": InferenceSummary, "power":power_stats,"samplingDuration":args.smpl_duration}
-
+                    
+                    # if not trailRun:
                     # Write data to a json file
                     with open(stats_file_name, "w") as stats_file:
                         json.dump(outJson,stats_file)
