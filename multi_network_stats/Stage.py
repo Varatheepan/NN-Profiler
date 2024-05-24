@@ -45,6 +45,9 @@ class Stage:
         # Time taken for inferences in the stage
         self.inferDurations = []
 
+        # Time taken for data transfer to the compute component
+        self.tranferDurations = []
+
     def forward(self, x, NextStage= None):  #NextStage: Stage = None):
 
         """Forward the next input present in the input queue and store the output in the output queue.
@@ -85,7 +88,7 @@ class Stage:
         # If there are stages after this, store the output to the input queue of the next stage
         if self.stagePos == 0 or self.stagePos == 1:
             if NextStage == None:
-                print("Next stage is should be passed if the stage is at the start or middile of the pipeline")
+                print("Next stage should be passed if the stage is at the start or middile of the pipeline")
                 return ValueError
 
             # Set the output to the next stage's device
@@ -111,7 +114,9 @@ class Stage:
             Next stage in the pipeline of the NN
         """
 
-        # For the first stage set the device
+        t3 = time.time()
+
+        # Set the device
         if x.device.type != self.device.type:
             x = x.to(self.device)
 
@@ -124,6 +129,7 @@ class Stage:
         t2 = time.time()
 
         self.inferDurations.append(t2-t1)
+        self.tranferDurations.append(t1-t3)
         self.infCount += 1
 
         return x
