@@ -250,7 +250,16 @@ class MappingGenerator:
             model = torch.load(modelCkptPath)
             
             # Creating a stage 
-            stage = Stage(torch.device(list(mapping.values())[0]),nn.Sequential(model),stagePosition=3)
+            # stage = Stage(torch.device(list(mapping.values())[0]),nn.Sequential(model),stagePosition=3)
+            layer_ID = 0
+            layerBlock = collections.OrderedDict()
+            for layer in layers:
+                op_name = model_name+"_"+str(layer_ID)
+                if op_name in self.op_executor.operations and layer_ID != 0:
+                    layerBlock[str(layer_ID)+"_op"]= self.op_executor.operations[op_name][0]
+                layer_ID += 1
+                layerBlock[str(layer_ID)] = layer
+            stage = Stage(torch.device(list(mapping.values())[0]),nn.Sequential(layerBlock),stagePosition=3)
             stages.append(stage)
 
         # For networks split among devices
@@ -429,7 +438,7 @@ class MappingGenerator:
         self.mapCaseCounts[self.caseIdx] += 1
         self.iterIdx += 1
         # print("self.iterIdx: ",self.iterIdx,"  Mappings: ", Mappings)
-        print(f"mapCaseCounts: {self.mapCaseCounts}")
+        print(f"MapCaseCounts: {self.mapCaseCounts}")
 
         return stageDict,Mappings
 

@@ -73,7 +73,8 @@ def arguments_parser():
     return parser.parse_args()
 
 def InitializeParams(args):
-
+    print("The follwoing parameters are initialized for the experiment:")
+    print(f"MODE: {args.mode}")
     print(f"SAMPLING DURATION: {args.smpl_duration}")
     if args.eval_tgr:
         # print(f"Tegrastats configuration: \nSAMPLING INTERVAL: {args.tgr_interval}\nSAMPLING DURATION: {args.smpl_duration}\
@@ -121,7 +122,7 @@ def InitializeParams(args):
                 print(f"Parameters `{InvalidParams}` not identified in Available Parameters")
                 return ModeS, Parameters
             Parameters = Paramtemp
-        print(f"Parameters sampled: {Parameters}")
+        print(f"Parameters sampled: {Parameters}\n")
 
     return ModeS, Parameters
 
@@ -140,11 +141,14 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
 
         NumCases = len(NumModelsCases)
 
-        ModelsPerCases = [int(args.num_samples/NumCases)]*NumCases
+        MappingsperCases = [int(args.num_samples/NumCases)]*NumCases
 
         for i in range(args.num_samples%NumCases):
-            ModelsPerCases[-(i+1)] += 1
-        print(f"ModelsPerCase: {ModelsPerCases}")
+            MappingsperCases[-(i+1)] += 1
+
+        print("The following two lists provide the number of models and mappings to be generated for each case.")
+        print(f"Number of Models per Cases: {NumModelsCases}")
+        print(f"Number of Mappings per Cases: {MappingsperCases}\n")
 
         GeneratedModelsPerCases = [0]*NumCases
 
@@ -156,18 +160,18 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
 
         numProcessedMappings = 0
 
-        # while GeneratedModelsPerCases[caseIdx] < ModelsPerCases[caseIdx]:
+        # while GeneratedModelsPerCases[caseIdx] < MappingsperCases[caseIdx]:
         for caseIdx in range(NumCases):
 
-            print(f"running case {caseIdx}")
+            print(f"New case with number of models in each mapping = {NumModelsCases[caseIdx]}\n")
 
             # Number of MappingeGenerator objects created for the current case
             NumObjs = 0
 
-            while GeneratedModelsPerCases[caseIdx] < ModelsPerCases[caseIdx]:
+            while GeneratedModelsPerCases[caseIdx] < MappingsperCases[caseIdx]:
 
                 # Number of mappings to generate from each object
-                SmplPerObj = 20 #int(min(20,ModelsPerCases[caseIdx], ModelsPerCases[caseIdx] - 20*NumObjs))
+                SmplPerObj = 20 #int(min(20,MappingsperCases[caseIdx], MappingsperCases[caseIdx] - 20*NumObjs))
 
                 # Randomly choose n number of  models accroding to the case
                 Model_set = np.random.choice(model_list,NumModelsCases[caseIdx], replace = False)
@@ -181,6 +185,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                 # TODO: Determine the number of parallel network cases (eg: range(4,11)). Randomly sample n number of network. --> Done
                 MapperObj = MappingGenerator(args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
 
+                print("\n")
                 ObjStages,mapping = MapperObj.iter()
 
                 while ObjStages != False:
@@ -188,7 +193,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     # mapping = []
                     # ObjStages,mapping = MapperObj.iter()
 
-                    print(f"Mapping {numProcessedMappings}")
+                    print(f"Mapping ID {numProcessedMappings}")
 
                     if args.eval_tgr:
                         InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
@@ -227,23 +232,24 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     del ObjStages
                     gc.collect()
 
+                    print("\n")
                     ObjStages,mapping = MapperObj.iter()
 
-                    print("\n")
+                    # print("\n")
                 
                 # NumObjs += 1
 
             # # Change the case index if defined number of sameple are generated for the currenet case
-            # if int(GeneratedModelsPerCases[caseIdx]) == int(ModelsPerCases[caseIdx]):
+            # if int(GeneratedModelsPerCases[caseIdx]) == int(MappingsperCases[caseIdx]):
             #     if caseIdx == NumCases - 1:
             #         print("Dataset generation completed!")
             #         break 
             #     else:
             #         caseIdx += 1
-        print("Dataset generation completed!")
+        print("\nDataset generation completed!")
 
     except Exception as e1:
-        print("Error: ", e1)
+        print("\nError: ", e1)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         print(exc_type, fname, exc_tb.tb_lineno)
@@ -259,9 +265,9 @@ if __name__ == "__main__":
             if len(Parameters)>0:
                 WorkloadDataGenerator(args,ModeS, Parameters)
         t2 = time.time()
-        print(f"Time taken for Mode{args.mode}: {t2-t1} seconds")
+        print(f"\nTime taken for Mode{args.mode}: {t2-t1} seconds")
     except Exception as e:
-        print("Error: ", e)
+        print("\nError: ", e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         print(exc_type, fname, exc_tb.tb_lineno)

@@ -26,28 +26,6 @@ from tegrestats.tegrastats_utils import analyze_power_stats
 # Project path
 project_path = Path(__file__).resolve().parents[0]
 
-# List of default images
-# sample_set = ['img1.jpg']#, 'img2.jpg', 'img3.jpg']
-
-# Mode = 7
-# ModeS = f"Mode{str(Mode)}"
-# numSamples= 3
-# model_list = ['alexnet','mobilenet_v2','mobilenet_v3_large']
-# model_list = ['alexnet','mobilenet_v2','mobilenet_v3_large',"regnet_y_400mf", "regnet_y_800mf", "regnet_y_1_6gf", "regnet_x_3_2gf", "regnet_x_800mf", "regnet_x_400mf"]
-
-# standardRunDevice = 'cpu'
-# deviceList = ['cpu','cpu']
-# devicePriorities = [0.5,0.5]
-
-# randSeed = 34
-# customMapping = None
-# sampling_window = 2
-
-# ## Tegrastats parameters
-# tgr_interval = 20                                           # tegrastats sampling interval in milliseconds
-# tgr_NS = int((1000/tgr_interval)*sampling_window)           # Number of sample to extract from tegrastats
-# sampling_freq = int(1/tgr_interval)                         # number of sample per second
-
 Parameters = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR"]
 
 default_preprocess = transforms.Compose([
@@ -127,6 +105,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                         InferenceSummary[model_name][stage.device.type] = {}
                     InferenceSummary[model_name][stage.device.type]["infCount"] = stage.infCount
                     InferenceSummary[model_name][stage.device.type]["infDurations"] = copy.deepcopy(stage.inferDurations)
+                    InferenceSummary[model_name][stage.device.type]["transferDurations"] = copy.deepcopy(stage.tranferDurations)
 
 
             for thread_name in threadDict.keys():
@@ -134,14 +113,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             
             t3 = time.time()
 
-            print("time taken to stop: " , t3-t2)
-
-            # for model_name in ObjStages.keys():
-            #     print(f"Inf count of `{model_name}`: {ObjStages[model_name][-1].infCount}")
-            #     print(f"Throughput of `{model_name}`: {ObjStages[model_name][-1].infCount/(t2-t1)}")
-            
-            print("Inference counts: ", InferenceSummary)
-
+            print("Time taken to stop threads: " , t3-t2)
 
         if args.eval_tgr:
             #########################################################
@@ -165,10 +137,6 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                 os.remove(tempPath)
             
             command = f'tegrastats --interval {args.tgr_interval} | head -n {tgr_NS} > {tempPath}'
-            # startCommand = f'exec tegrastats --interval {tgr_interval} > {tempPath}'
-            # startCommand = f'tegrastats --interval {tgr_interval} --logfile {tempPath} --start'
-            # stopCommand = f'tegrastats --stop'
-            # stopCommand = "kill -9 $(ps -ax | grep Mapping | fgrep -v grep | awk '{ print $1 }'"
 
             # # A subprocess to run the tegrastats command
             stats_proc = subprocess.Popen(command,shell=True)
@@ -181,13 +149,6 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             # let the workload begin
             time.sleep(args.tgr_smpl_boundry)
 
-            # A subprocess to run the tegrastats command
-            # stats_proc_start = subprocess.Popen(startCommand,shell=False)#,preexec_fn=os.setsid)
-            # os.system(startCommand)
-            # os.wait()
-
-            # time.sleep(2)
-
             t1 = time.time()
 
             while (stats_proc.poll()==None):
@@ -196,14 +157,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             
             t2 = time.time()
 
-            print("excution time: " , t2-t1)
-
-            # Stop running tegrastats process
-            # stats_proc_end = subprocess.Popen(stopCommand)
-            # stats_proc_start.kill()
-            # os.killpg(os.getpgid(stats_proc_start), signal.SIGTERM)
-            # os.system(stopCommand)
-            # os.wait()
+            print("Execution time: " , t2-t1)
             
             Running_active = False
 
@@ -212,8 +166,9 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             
             power_stats = analyze_power_stats(tempPath,' ', Parameters)
 
-            powerStatCount = {key:len(value) for key,value in power_stats.items()}
-            print("power stats count: ",powerStatCount)
+            # # Count the number of samples for each power stat
+            # powerStatCount = {key:len(value) for key,value in power_stats.items()}
+            # print(f"Power stats data sample count: {powerStatCount}\n")
 
             thread_names = list(threadDict.keys())
             for thread_name in thread_names:
