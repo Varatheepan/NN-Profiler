@@ -8,11 +8,17 @@ def analyze_power_stats(txt_file: str, device,parameters: list):
         content = stats.readlines()
 
         if len(parameters) == 0:
-            parameters = ["VDD_SYS_CPU","VDD_SYS_GPU"]
+            parameters = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","APE","PLL","MCPU","PMIC","Tboard","GPU","BCPU","thermal","Tdiode","VDD_SYS_GPU","VDD_SYS_SOC","VDD_4V0_WIFI","VDD_IN","VDD_SYS_CPU","VDD_SYS_DDR"]
             print("Empty parameter list given. Parameter list Defaults to [\"VDD_SYS_CPU\",\"VDD_SYS_GPU\"]")
+        else:
+            parameters = [param for param in ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","APE","PLL","MCPU","PMIC",\
+                                              "Tboard","GPU","BCPU","thermal","Tdiode","VDD_SYS_GPU","VDD_SYS_SOC","VDD_4V0_WIFI"\
+                                                ,"VDD_IN","VDD_SYS_CPU","VDD_SYS_DDR"] if param in parameters]
 
         paramIndex = 0
         Readings = {param:[] for param in parameters}
+
+        AvgParameters = [p for p in ["VDD_SYS_GPU","VDD_SYS_CPU","VDD_SYS_DDR","VDD_4V0_WIFI","VDD_IN","VDD_SYS_SOC"] if p in parameters]
 
         for j,line in enumerate(content):
             lineSplit = line.split(" ")
@@ -21,9 +27,13 @@ def analyze_power_stats(txt_file: str, device,parameters: list):
                 if txt == parameters[paramIndex]:
 
                     # Power parameters, RAM and SWAP parameters
-                    if (txt != "CPU") and (txt != "EMC_FREQ") and (txt != "GR3D_FREQ"): 
-                        tempval = int(lineSplit[i+1].split("/")[0])
-                        Readings[txt].append(tempval)
+                    if (txt != "CPU") and (txt != "EMC_FREQ") and (txt != "GR3D_FREQ") and (txt != "APE"): 
+                        tempval = lineSplit[i+1].split("/")
+                        Readings[txt].append(int(tempval[0]))
+                        if txt in AvgParameters:
+                            if txt+"_Avg" not in Readings:
+                                Readings[txt+"_Avg"] = []
+                            Readings[txt+"_Avg"].append(int(tempval[1]))                            
                         paramIndex += 1
 
                     # Entries for CPU utilization and running frequencies
@@ -65,6 +75,10 @@ def analyze_power_stats(txt_file: str, device,parameters: list):
                         Readings["GR3D_FREQ"]["Frequencies"].append(int(tempvals[1])) 
                         paramIndex +=  1
 
+                    # Entries for APE 
+                    elif txt == "APE":
+                        Readings["APE"].append(int(lineSplit[i+1]))
+                        paramIndex += 1
                 
                 # Temperature parameters
                 elif txt.split("@")[0] == parameters[paramIndex]:
@@ -73,9 +87,12 @@ def analyze_power_stats(txt_file: str, device,parameters: list):
                     paramIndex += 1
 
                 # Reset parameter index for the next line 
+                # print(f"paramIndex: {paramIndex}, len(parameters): {len(parameters)}, line {j}")
                 if paramIndex == len(parameters):
                     paramIndex = 0
                     break
+
+                # print(f"paramIndex: {paramIndex}")
         return Readings
     except Exception as e:
         # print(f"txt: `{txt}` next txt: {lineSplit[i+1]} split: {lineSplit[i+1].split('/')} Param: {parameters[paramIndex]}")

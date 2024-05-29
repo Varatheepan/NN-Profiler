@@ -422,7 +422,8 @@ class MappingGenerator:
             if self.mapCaseCounts[self.caseIdx] != self.mapCases[self.caseIdx]:
                 Mappings = self.generate_mapping(self.caseIdx)
             else:
-                self.caseIdx +=1
+                while self.mapCaseCounts[self.caseIdx] == self.mapCases[self.caseIdx]:
+                    self.caseIdx +=1
                 Mappings = self.generate_mapping(self.caseIdx)
 
         # TODO: implement a memory overflow management

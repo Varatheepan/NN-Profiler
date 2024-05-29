@@ -33,7 +33,7 @@ project_path = Path(__file__).resolve().parents[0]
 sample_set = ['img1.jpg']#, 'img2.jpg', 'img3.jpg']
 
 custom_model_list = ['alexnet','mobilenet_v2','mobilenet_v3_large']
-randSeed = 34
+# randSeed = 34
 
 Parameters = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR", "VDD_IN"]
 model_list = get_model_list()
@@ -52,14 +52,14 @@ def arguments_parser():
     parser.add_argument("--mode", required=True, type=int, help="The mode that is being experimented. Make sure to switch the mode in Tx2.")
     parser.add_argument("--num_samples", default=20, type=int, help="the number of samples to be generated for thie selected mode.")
     parser.add_argument("--device_list", default=["cpu","cuda"], help="The devices to run the experiment on.")
-    parser.add_argument("--device_priorities", default=None, help="The proirities of using the devices for mapping. Deafault will give equal priority each device.")
+    parser.add_argument("--device_priorities", default=None, help="The proirities of using the devices for mapping. Default will give equal priority each device.")
     parser.add_argument("--model_list", default=get_model_list(),help="The list of models to be used to generate the dataset.")
     parser.add_argument("--imgs", default=sample_set, nargs='+',help="A comma seperated list of images to run the experimets. \
                         Images should be stored in data/imagenet.")
     parser.add_argument("--smpl_duration", default=30, type=int, help="The time interval to to run a workload for the measurements.")
     
     # Tegratstats related parameters
-    parser.add_argument("--tgr_params", default=["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR", "VDD_IN"],\
+    parser.add_argument("--tgr_params", default=["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","APE","PLL","MCPU","PMIC","Tboard","GPU","BCPU","thermal","Tdiode","VDD_SYS_GPU","VDD_SYS_SOC","VDD_4V0_WIFI","VDD_IN","VDD_SYS_CPU","VDD_SYS_DDR"],\
                         nargs='+' ,help="A space seperatedlist of parameters from the defaults list of parameters to extract from tegratstats.")
     parser.add_argument("--eval_tgr", action='store_true' ,help="Whether to evaluate tegrastats parameters. Intended for power evaluation.")
     parser.add_argument("--tgr_interval", default=50,type=int, help="The tegrastats data sampling interval. Data sampled at every `tgr_interval` mS time.")
@@ -69,6 +69,9 @@ def arguments_parser():
     # throughput related parameters
     parser.add_argument("--eval_thr", action='store_true', help="Whether to evaluate throughput.")
     # parser.add_argument("--thr_interval", default=30, type=int, help="The time interval to to run a workload for the throughput measurement.")
+
+    parser.add_argument("--max_split_nets", default=-1, type=int, help="The maximum number of networks to be split in a mapping.")
+    parser.add_argument("--seed", default=0, type=int, help="The seed to be used for random number generation.")
 
     return parser.parse_args()
 
@@ -94,7 +97,7 @@ def InitializeParams(args):
     if args.eval_tgr:
 
         # Available Parameters to be sampled from tegrastats. Listed in the order params appear in the command output.
-        AvailParams = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR", "VDD_IN"]
+        AvailParams = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","APE","PLL","MCPU","PMIC","Tboard","GPU","BCPU","thermal","Tdiode","VDD_SYS_GPU","VDD_SYS_SOC","VDD_4V0_WIFI","VDD_IN","VDD_SYS_CPU","VDD_SYS_DDR"]
 
         ''' Parameters which might be usful to capture for this project are listed. Check Tegrastats to find other parameters
         "VDD_SYS_CPU"   : CPU Power usage      
@@ -128,8 +131,22 @@ def InitializeParams(args):
 
 def WorkloadDataGenerator(args, ModeS, Parameters):
     try:
+        # Set the seed for random number generation
+        if args.seed > 0:
+            randSeed = args.seed
+            random.seed(args.seed)
+            np.random.seed(args.seed)
+            torch.manual_seed(args.seed)
+        else:
+            randSeed = args.mode
+            random.seed(args.mode)
+            np.random.seed(args.mode)
+            torch.manual_seed(args.mode)
 
         trailRun = True
+
+        if args.device_priorities is not None:
+            args.device_priorities = [float(dev) for dev in args.device_priorities.split(",")]
 
         sampling_freq = 1000.0/args.tgr_interval
         tgr_NS = int((1000/args.tgr_interval)*args.smpl_duration) 
@@ -182,8 +199,19 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
                     trailRun = False
 
+                CaseList = None
+                if args.max_split_nets > 0:
+                    CaseList = [0]*(NumModelsCases[caseIdx]+1)
+                    CaseList[NumModelsCases[caseIdx] - args.max_split_nets:] = [int(SmplPerObj/(args.max_split_nets+1))]*(args.max_split_nets+1)
+
+                    for i in range(SmplPerObj%(args.max_split_nets+1)):
+                        CaseList[-(i+1)] += 1
+                    
+                    print(f"CaseList: {CaseList}")
+
+
                 # TODO: Determine the number of parallel network cases (eg: range(4,11)). Randomly sample n number of network. --> Done
-                MapperObj = MappingGenerator(args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
+                MapperObj = MappingGenerator(args.device_list,Model_set,NumSamples=SmplPerObj,CaseSamples=CaseList,device_prioriy = args.device_priorities, seed=randSeed)
 
                 print("\n")
                 ObjStages,mapping = MapperObj.iter()
