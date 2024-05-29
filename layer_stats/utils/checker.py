@@ -2,88 +2,118 @@
 import torch
 import torchvision.models as models
 
+def banned_mods():
+    """https://pytorch.org/vision/stable/models.html
+    """
+    bugged = ["inception_v3", "googlenet", "maxvit_t", 
+              "shufflenet_v2_x0_5", "shufflenet_v2_x1_0", 
+              "shufflenet_v2_x1_5", "shufflenet_v2_x2_0", 
+              "swin_b", "swin_s", "swin_t", "swin_v2_b", 
+              "swin_v2_s", "swin_v2_t", "vit_b_16", "vit_b_32", 
+              "vit_h_14", "vit_l_16", "vit_l_32"]
+    timely = ["convnext_base", "convnext_large", "convnext_small", 
+              "convnext_tiny", "densenet121, densenet161", "densenet201", 
+              "efficientnet_b4", "efficientnet_b5", "efficientnet_b6", "efficientnet_b7",
+              "efficientnet_v2_l", "efficientnet_v2_m", "mobilenet_v3_large", 
+              "mobilenet_v3_small", "regnet_y_128gf", "regnet_y_16gf", "regnet_y_32gf",
+              "vgg16", "vgg16_bn"]
+    return bugged + timely
 
-def get_model_list():
-    return [
-        "alexnet",
-        "densenet121",
-        "efficientnet_b0", "efficientnet_b1", "efficientnet_b2",
-        "mnasnet0_5", "mnasnet1_0",
-        "mobilenet_v2",
-        "mobilenet_v3_large", "mobilenet_v3_small",
-        "regnet_y_400mf", "regnet_y_800mf", "regnet_y_1_6gf", "regnet_x_3_2gf", "regnet_x_800mf", "regnet_x_400mf",
-        "resnet18", "resnet34", "resnet50", "resnet101",
-        "shufflenet_v2_x0_5", "shufflenet_v2_x1_0",
-        "squeezenet1_0"
+def get_model_list(jetson_device: str = "Tx2"):
 
-        ####### SUPPORTED BUT NO CHECKPOINT IN TORCHVISION 0.11.0 ###########
-        # "mnasnet0_75", "mnasnet1_3",
+    if jetson_device in ["Xavier", "Orin"]:
+        Available_Models = models.list_models(module=models)
 
-        ########################## BANNED ##########################
-        # "densenet161", "densenet169", "densenet201",
-        # "efficientnet_b3", "efficientnet_b4", "efficientnet_b5", "efficientnet_b6", "efficientnet_b7",
-        # "googlenet",
-        # "inception_v3",
-        # "regnet_y_3_2gf", "regnet_x_1_6gf", "regnet_x_8gf", "regnet_y_8gf", "regnet_y_16gf", "regnet_y_32gf", "regnet_x_16gf", "regnet_x_32gf",
-        # "resnet152",
-        # "resnext50_32x4d", "resnext101_32x8d",
-        # "shufflenet_v2_x1_5", "shufflenet_v2_x2_0",
-        # "squeezenet1_1",
-        # "vgg11", "vgg11_bn", "vgg13", "vgg13_bn", "vgg16", "vgg16_bn", "vgg19", "vgg19_bn"
-        # "wide_resnet50_2", "wide_resnet101_2"
-    ]
+        banned_models = banned_mods()
+
+        return [model for model in Available_Models if model not in banned_models]
+
+    else:# jetson_device == "Tx2":
+        return [
+            "alexnet",
+            "densenet121",
+            "efficientnet_b0", "efficientnet_b1", "efficientnet_b2",
+            "mnasnet0_5", "mnasnet1_0",
+            "mobilenet_v2",
+            "mobilenet_v3_large", "mobilenet_v3_small",
+            "regnet_y_400mf", "regnet_y_800mf", "regnet_y_1_6gf", "regnet_x_3_2gf", "regnet_x_800mf", "regnet_x_400mf",
+            "resnet18", "resnet34", "resnet50", "resnet101",
+            "shufflenet_v2_x0_5", "shufflenet_v2_x1_0",
+            "squeezenet1_0"
+
+            ####### SUPPORTED BUT NO CHECKPOINT IN TORCHVISION 0.11.0 ###########
+            # "mnasnet0_75", "mnasnet1_3",
+
+            ########################## BANNED ##########################
+            # "densenet161", "densenet169", "densenet201",
+            # "efficientnet_b3", "efficientnet_b4", "efficientnet_b5", "efficientnet_b6", "efficientnet_b7",
+            # "googlenet",
+            # "inception_v3",
+            # "regnet_y_3_2gf", "regnet_x_1_6gf", "regnet_x_8gf", "regnet_y_8gf", "regnet_y_16gf", "regnet_y_32gf", "regnet_x_16gf", "regnet_x_32gf",
+            # "resnet152",
+            # "resnext50_32x4d", "resnext101_32x8d",
+            # "shufflenet_v2_x1_5", "shufflenet_v2_x2_0",
+            # "squeezenet1_1",
+            # "vgg11", "vgg11_bn", "vgg13", "vgg13_bn", "vgg16", "vgg16_bn", "vgg19", "vgg19_bn"
+            # "wide_resnet50_2", "wide_resnet101_2"
+        ]
 
 
 # def get_model(model_name: str):
 #     return getattr(models, model_name)(weights=None)
 
-def get_model(model_name: str):
-    if model_name == "alexnet":
-        return models.alexnet(pretrained=True)
-    elif model_name == "densenet121":
-        return models.densenet121(pretrained=True)
-    elif model_name == "efficientnet_b0":
-        return models.efficientnet_b0(pretrained=True)
-    elif model_name == "efficientnet_b1":
-        return models.efficientnet_b1(pretrained=True)
-    elif model_name == "efficientnet_b2":
-        return models.efficientnet_b2(pretrained=True)
-    elif model_name == "mnasnet0_5":
-        return models.mnasnet0_5(pretrained=True)
-    elif model_name == "mnasnet1_0":
-        return models.mnasnet1_0(pretrained=True)
-    elif model_name == "mobilenet_v2":
-        return models.mobilenet_v2(pretrained=True)
-    elif model_name == "mobilenet_v3_large":
-        return models.mobilenet_v3_large(pretrained=True)
-    elif model_name == "mobilenet_v3_small":
-        return models.mobilenet_v3_small(pretrained=True)
-    elif model_name == "regnet_y_400mf":
-        return models.regnet_y_400mf(pretrained=True)
-    elif model_name == "regnet_y_800mf":
-        return models.regnet_y_800mf(pretrained=True)
-    elif model_name == "regnet_y_1_6gf":
-        return models.regnet_y_1_6gf(pretrained=True)
-    elif model_name == "regnet_x_3_2gf":
-        return models.regnet_x_3_2gf(pretrained=True)
-    elif model_name == "regnet_x_800mf":
-        return models.regnet_x_800mf(pretrained=True)
-    elif model_name == "regnet_x_400mf":
-        return models.regnet_x_400mf(pretrained=True)
-    elif model_name == "resnet18":
-        return models.resnet18(pretrained=True)
-    elif model_name == "resnet34":
-        return models.resnet34(pretrained=True)
-    elif model_name == "resnet50":
-        return models.resnet50(pretrained=True)
-    elif model_name == "resnet101":
-        return models.resnet101(pretrained=True)
-    elif model_name == "shufflenet_v2_x0_5":
-        return models.shufflenet_v2_x0_5(pretrained=True)
-    elif model_name == "shufflenet_v2_x1_0":
-        return models.shufflenet_v2_x1_0(pretrained=True)
-    elif model_name == "squeezenet1_0":
-        return models.squeezenet1_0(pretrained=True)
+def get_model(model_name: str, jetson_device: str = "Tx2"):
+
+    if jetson_device in ["Xavier", "Orin"]:
+        return getattr(models, model_name)(weights=None)
+    
+    else:# jetson_device == "Tx2":
+        if model_name == "alexnet":
+            return models.alexnet(pretrained=True)
+        elif model_name == "densenet121":
+            return models.densenet121(pretrained=True)
+        elif model_name == "efficientnet_b0":
+            return models.efficientnet_b0(pretrained=True)
+        elif model_name == "efficientnet_b1":
+            return models.efficientnet_b1(pretrained=True)
+        elif model_name == "efficientnet_b2":
+            return models.efficientnet_b2(pretrained=True)
+        elif model_name == "mnasnet0_5":
+            return models.mnasnet0_5(pretrained=True)
+        elif model_name == "mnasnet1_0":
+            return models.mnasnet1_0(pretrained=True)
+        elif model_name == "mobilenet_v2":
+            return models.mobilenet_v2(pretrained=True)
+        elif model_name == "mobilenet_v3_large":
+            return models.mobilenet_v3_large(pretrained=True)
+        elif model_name == "mobilenet_v3_small":
+            return models.mobilenet_v3_small(pretrained=True)
+        elif model_name == "regnet_y_400mf":
+            return models.regnet_y_400mf(pretrained=True)
+        elif model_name == "regnet_y_800mf":
+            return models.regnet_y_800mf(pretrained=True)
+        elif model_name == "regnet_y_1_6gf":
+            return models.regnet_y_1_6gf(pretrained=True)
+        elif model_name == "regnet_x_3_2gf":
+            return models.regnet_x_3_2gf(pretrained=True)
+        elif model_name == "regnet_x_800mf":
+            return models.regnet_x_800mf(pretrained=True)
+        elif model_name == "regnet_x_400mf":
+            return models.regnet_x_400mf(pretrained=True)
+        elif model_name == "resnet18":
+            return models.resnet18(pretrained=True)
+        elif model_name == "resnet34":
+            return models.resnet34(pretrained=True)
+        elif model_name == "resnet50":
+            return models.resnet50(pretrained=True)
+        elif model_name == "resnet101":
+            return models.resnet101(pretrained=True)
+        elif model_name == "shufflenet_v2_x0_5":
+            return models.shufflenet_v2_x0_5(pretrained=True)
+        elif model_name == "shufflenet_v2_x1_0":
+            return models.shufflenet_v2_x1_0(pretrained=True)
+        elif model_name == "squeezenet1_0":
+            return models.squeezenet1_0(pretrained=True)
 
 def check_memory_usage(model, input_size):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

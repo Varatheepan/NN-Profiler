@@ -1,11 +1,11 @@
-
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-
-from torch import nn
+import torchvision.models as models
 
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
+
 
 class _alexnet_op(nn.Module):
     @torch.no_grad()
@@ -86,6 +86,10 @@ class _vgg_op(nn.Module):
     def forward(self, x: torch.Tensor):
         return torch.flatten(x, 1)
     
+class _vit_pre_out_op(nn.Module):
+    @torch.no_grad()
+    def forward(self, x: torch.Tensor):
+        return x[:, 0]
 
 class CustomOpExecutor:
     def __init__(self, preprocess: bool = False, verbose: bool = False):
@@ -94,91 +98,11 @@ class CustomOpExecutor:
         self.model_family_ops = {}
         self.preprocess_ops = {}
         self.verbose = verbose
-
-    # @staticmethod
-    # @torch.no_grad()
-    # def _alexnet_op(x: torch.Tensor):
-    #     return torch.flatten(x, 1)
-
-    # @staticmethod
-    # @torch.no_grad()
-    # def _densenet_op(x: torch.Tensor):
-    #     x = F.relu(x, inplace=True)
-    #     x = F.adaptive_avg_pool2d(x, (1, 1))
-    #     return torch.flatten(x, 1)
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _efficientnet_op(x: torch.Tensor):
-    #     return torch.flatten(x, 1)
-
-    # @staticmethod
-    # @torch.no_grad()
-    # def _googlenet_prep_op(x: torch.Tensor):
-    #     x_ch0 = torch.unsqueeze(x[:, 0], 1) * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
-    #     x_ch1 = torch.unsqueeze(x[:, 1], 1) * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
-    #     x_ch2 = torch.unsqueeze(x[:, 2], 1) * (0.225 / 0.5) + (0.406 - 0.5) / 0.5
-    #     return torch.cat((x_ch0, x_ch1, x_ch2), 1)
-
-    # @staticmethod
-    # @torch.no_grad()
-    # def _googlenet_post_op(x: torch.Tensor):
-    #     return torch.flatten(x, 1)
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _inception_prep_op(x: torch.Tensor):
-    #     x_ch0 = torch.unsqueeze(x[:, 0], 1) * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
-    #     x_ch1 = torch.unsqueeze(x[:, 1], 1) * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
-    #     x_ch2 = torch.unsqueeze(x[:, 2], 1) * (0.225 / 0.5) + (0.406 - 0.5) / 0.5
-    #     return torch.cat((x_ch0, x_ch1, x_ch2), 1)
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _inception_post_op(x: torch.Tensor):
-    #     return torch.flatten(x, 1)
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _mnasnet_op(x: torch.Tensor):
-    #     return x.mean([2, 3])
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _mobilenet_v2_op(x: torch.Tensor):
-    #     x = F.adaptive_avg_pool2d(x, (1, 1))
-    #     return torch.flatten(x, 1)
-
-    # @staticmethod
-    # @torch.no_grad()
-    # def _mobilenet_v3_op(x: torch.Tensor):
-    #     return torch.flatten(x, 1)
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _regnet_op(x: torch.Tensor):
-    #     return torch.flatten(x, 1)
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _resnet_op(x: torch.Tensor):
-    #     return torch.flatten(x, 1)
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _shufflenet_v2_op(x: torch.Tensor):
-    #     return x.mean([2, 3])
-    
-    # @staticmethod
-    # @torch.no_grad()
-    # def _vgg_op(x: torch.Tensor):
-    #     return torch.flatten(x, 1)
-    
     def register_preprocess(self, model_name: str, transform):
         """Registers a preprocessing operation for a specific model family."""
         self.preprocess_ops[model_name] = transform
 
-    def register_family_operation(self, family_name, operation: nn.Module):
+    def register_family_operation(self, family_name, operation):
         """Associates a family with a specific operation."""
         if family_name not in self.model_family_ops:
             self.model_family_ops[family_name] = []
@@ -219,7 +143,6 @@ class CustomOpExecutor:
     ):
         key = f"{model_name}_{layer_idx}"
         operations = self.operations.get(key, [lambda x: x])
-        # print("operations: ",[op for op in operations])
         cntr = 0
         for op in operations:
             if layer_idx == 0 and cntr == 0:
@@ -229,7 +152,6 @@ class CustomOpExecutor:
             else:
                 x = op(x)
         return x
-
 
 def get_model_list():
     return [
@@ -250,12 +172,38 @@ def get_model_list():
         "wide_resnet50_2", "wide_resnet101_2"
     ]
 
-
-def database_spawn(preprocess: bool = False, pretrained: bool = False, verbose: bool = False):
+def database_spawn(preprocess: bool = False, pretrained: bool = False, verbose: bool = False, jetson_device: str = "Tx2"):
     # Define preprocessing stack for Inception models
     inception_preprocess = transforms.Compose([
         transforms.Resize(342),
         transforms.CenterCrop(299),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], 
+            std=[0.229, 0.224, 0.225]),
+    ])
+
+    swag_preprocess = transforms.Compose([
+        transforms.Resize(384, interpolation=InterpolationMode.BICUBIC),
+        transforms.CenterCrop(384),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], 
+            std=[0.229, 0.224, 0.225]),
+    ])
+    
+    vit_h_preprocess = transforms.Compose([
+        transforms.Resize(518, interpolation=InterpolationMode.BICUBIC),
+        transforms.CenterCrop(518),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], 
+            std=[0.229, 0.224, 0.225]),
+    ])
+
+    vit_l_preprocess = transforms.Compose([
+        transforms.Resize(512, interpolation=InterpolationMode.BICUBIC),
+        transforms.CenterCrop(512),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406], 
@@ -269,15 +217,6 @@ def database_spawn(preprocess: bool = False, pretrained: bool = False, verbose: 
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406], 
-            std=[0.229, 0.224, 0.225]),
-    ])
-
-    swag_preprocess = transforms.Compose([
-        transforms.Resize(384, interpolation=InterpolationMode.BICUBIC),
-        transforms.CenterCrop(384),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225]),
     ])
     
@@ -301,9 +240,13 @@ def database_spawn(preprocess: bool = False, pretrained: bool = False, verbose: 
     op_executor.register_family_operation("resnext", _resnet_op())
     op_executor.register_family_operation("shufflenet_v2", _shufflenet_v2_op())
     op_executor.register_family_operation("vgg", _vgg_op())
+    op_executor.register_family_operation("vit", _vit_pre_out_op())
 
     # Register preprocessing step
-    model_list = get_model_list()
+    if jetson_device in ["Xavier","Orin"]:
+        model_list = models.list_models(module=models)
+    else:# jetson_device == "Tx2":
+        model_list = get_model_list()
     for model_name in model_list:
         if model_name in ["inception_v3"]:
             op_executor.register_preprocess(model_name, inception_preprocess)
@@ -377,6 +320,11 @@ def database_spawn(preprocess: bool = False, pretrained: bool = False, verbose: 
     op_executor.register_operation("vgg16_bn", "vgg", 45)
     op_executor.register_operation("vgg19", "vgg", 38)
     op_executor.register_operation("vgg19_bn", "vgg", 54)
+    op_executor.register_operation("vit_b_16", "vit", 16)
+    op_executor.register_operation("vit_b_32", "vit", 16)
+    op_executor.register_operation("vit_h_14", "vit", 36)
+    op_executor.register_operation("vit_l_16", "vit", 28)
+    op_executor.register_operation("vit_l_32", "vit", 28)
 
     # Finalize registration
     op_executor.finalize_registration()
