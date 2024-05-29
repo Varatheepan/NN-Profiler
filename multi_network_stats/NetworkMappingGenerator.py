@@ -22,18 +22,18 @@ class MappingGenerator:
     # class variable
     Instances = []
 
-    def __init__(self, device_list:list = ['cpu', 'cuda'], network_list = ['alexnet','mobilenet_v2'], NumSamples:int = 1000, CaseSamples:list = None, device_prioriy:list = None, seed: int = 45) -> None:
+    def __init__(self, jetsonDevice: str = "TX2", compComponentList:list = ['cpu', 'cuda'], network_list = ['alexnet','mobilenet_v2'], NumSamples:int = 1000, CaseSamples:list = None, device_prioriy:list = None, seed: int = 45) -> None:
         """
             Parameters
             ----------
-            device_prioriy: The weightage given to the devices in the device_list according while craeting mapping samples
+            device_prioriy: The weightage given to the devices in the compComponentList according while craeting mapping samples
             Eg: [1,2] will allocate the stage with more layers to `cuda` often
         """
         # The list of devices
-        self.device_list = device_list
+        self.compComponentList = compComponentList
 
         # The number of devices
-        self.num_devices = len(device_list)
+        self.num_devices = len(compComponentList)
 
         # The list of networks in the workload
         self.network_list = network_list
@@ -41,8 +41,10 @@ class MappingGenerator:
         # Number of smaples to generate in the dataset
         self.NumSamples = NumSamples
 
-        # Mapping object ~ The mapped layers in the order of device_list
+        # Mapping object ~ The mapped layers in the order of compComponentList
         self.stageMap = [None]*self.num_devices
+
+        self.jetsonDevice = jetsonDevice
 
         # NOTE: eliminated
         # # The possible set of mapping combinations
@@ -69,7 +71,7 @@ class MappingGenerator:
         self.caseIdx = 0
 
         # op_excuter for the intermediate (pre-)processes
-        self.op_executor = database_spawn(preprocess=True)
+        self.op_executor = database_spawn(preprocess=True,jetson_device=jetsonDevice)
 
         # Probablity of selecting each device for randomization
         if device_prioriy == None:
@@ -178,7 +180,7 @@ class MappingGenerator:
             print("Device list is empty!")
         elif self.num_devices == 1:
             for model_name in model_list:
-                mapping[model_name] = {self.numLayerDict[model_name]:self.device_list[0]}
+                mapping[model_name] = {self.numLayerDict[model_name]:self.compComponentList[0]}
 
         else:
             # Models to run in a stand-alone stage
@@ -186,14 +188,14 @@ class MappingGenerator:
 
             # Random selection of devices for each stand-alone stage
             for model_name in Sts_models:
-                mapping[model_name] = {self.numLayerDict[model_name]:np.random.choice(self.device_list,1,replace=True,p = self.deviceProb)[0]}
+                mapping[model_name] = {self.numLayerDict[model_name]:np.random.choice(self.compComponentList,1,replace=True,p = self.deviceProb)[0]}
             
             # List of models to be splitted among some devices
             Spl_models = [model_name for model_name in model_list if model_name not in Sts_models]
 
             for model_name in Spl_models:
                 mapping[model_name] = {}
-                devices = deepcopy(self.device_list)
+                devices = deepcopy(self.compComponentList)
                 
                 # Maximum possible number of model breaking points
                 numSplits = self.num_devices-1
@@ -377,7 +379,7 @@ class MappingGenerator:
             if not os.path.exists(modelCktPath):
                 os.mkdir(modelCktPath)
 
-                model = get_model(model_name)
+                model = get_model(model_name,jetson_device=self.jetsonDevice)
 
                 torch.save(model,os.path.join(modelCktPath,model_name+".ckpt"))
 
@@ -460,7 +462,7 @@ class MappingGenerator:
                 return False
             
             for device in Mappings[model_name].values():
-                if device not in self.device_list:
+                if device not in self.compComponentList:
                     print(f"Device `{device}` not in device list. `{model_name}` mapping is Invalid!")
                     return False
             

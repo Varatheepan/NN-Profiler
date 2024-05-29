@@ -49,6 +49,7 @@ default_preprocess = transforms.Compose([
 
 def arguments_parser():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--jetsonDevice", default="Tx2", help="The Jetson device to run the experiment on.")
     parser.add_argument("--mode", required=True, type=int, help="The mode that is being experimented. Make sure to switch the mode in Tx2.")
     parser.add_argument("--num_samples", default=20, type=int, help="the number of samples to be generated for thie selected mode.")
     parser.add_argument("--device_list", default=["cpu","cuda"], help="The devices to run the experiment on.")
@@ -194,7 +195,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                 Model_set = np.random.choice(model_list,NumModelsCases[caseIdx], replace = False)
 
                 if trailRun:
-                    MapperObj = MappingGenerator(args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
+                    MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
                     ObjStages,mapping = MapperObj.iter()
                     InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
                     trailRun = False
@@ -211,7 +212,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
 
 
                 # TODO: Determine the number of parallel network cases (eg: range(4,11)). Randomly sample n number of network. --> Done
-                MapperObj = MappingGenerator(args.device_list,Model_set,NumSamples=SmplPerObj,CaseSamples=CaseList,device_prioriy = args.device_priorities, seed=randSeed)
+                MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj,CaseSamples=CaseList,device_prioriy = args.device_priorities, seed=randSeed)
 
                 print("\n")
                 ObjStages,mapping = MapperObj.iter()
