@@ -1,3 +1,4 @@
+.gitingore
 data/data/
 data/collected/
 visualizations/
@@ -17,4 +18,14 @@ layer_stats/powerDatasetGenerator.py
 imagenet.zip
 Others
 Dataset
+Dataset_old
 ModelCheckPoints
+logs
+.vscode/settings.json
+denverComp.tar
+MappingDBSampler_bkp*
+nvpmodel.conf
+tegrestats/tegrastats_utils copy.py
+tegrestats/tegrastats_utils2.py
+tegrestats/tegrastatsSample copy.txt
+tegrestats/tegrastatsSample.txt
