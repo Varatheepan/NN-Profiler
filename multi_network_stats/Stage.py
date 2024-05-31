@@ -48,6 +48,9 @@ class Stage:
         # Time taken for data transfer to the compute component
         self.tranferDurations = []
 
+        # Inuput size of the stage
+        self.inputSize = None
+
     def forward(self, x, NextStage= None):  #NextStage: Stage = None):
 
         """Forward the next input present in the input queue and store the output in the output queue.
@@ -67,6 +70,10 @@ class Stage:
         # x = deepcopy(self.InputQueue)
 
         # self.InputQueue = None
+
+        # set input size
+        if self.inputSize == None:
+            self.inputSize = x.shape
 
         # For the first stage set the device
         if (self.stagePos == 0 or self.stagePos == 3) and x.device.type != self.device.type:
@@ -113,6 +120,9 @@ class Stage:
         NextStage:
             Next stage in the pipeline of the NN
         """
+        # set input size
+        if self.inputSize == None:
+            self.inputSize = x.shape
 
         t3 = time.time()
 

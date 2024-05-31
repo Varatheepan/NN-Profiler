@@ -387,6 +387,18 @@ class MappingGenerator:
 
                 NumOfLayersJson[model_name] = numLayers
 
+                del model
+
+            elif model_name not in NumOfLayersJson:
+                model = torch.load(os.path.join(modelCktPath,model_name+".ckpt"))
+
+                numLayers = count_layers(model)
+
+                NumOfLayersJson[model_name] = numLayers
+
+                del model
+
+
         JsonObject = {}
 
         if os.path.exists(NumOfLayersJsonFile):
