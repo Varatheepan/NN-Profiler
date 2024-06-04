@@ -49,8 +49,10 @@ def processMode(args):
             print("No modes provided to process!")
             return
 
+        # Process each available device
         for device, params in DevParams.items():
 
+            # Get the modes to process
             if device == "Tx2":
                 modes = args.tx2Modes
             elif device == "Xavier":
@@ -58,12 +60,14 @@ def processMode(args):
             elif device == "Orin":
                 modes = args.orinModes
             
+            # Process each mode
             for mode in modes:
+                
                 NumFilesCompleted = 0
 
                 ModeS = f"Mode{mode}"
 
-                ModeRoot = os.path.join(project_path,"Dataset/Multinet", ModeS)
+                ModeRoot = os.path.join(project_path,args.input_file_root, ModeS)
 
                 print(f"Mode root: {ModeRoot}")
 
@@ -90,7 +94,7 @@ def processMode(args):
                     Stats["Device"] = device
                     del Stats["power"]
                     Stats["Tegrastats"] = {}
-                    Stats["StageInfo"] = {}
+                    Stats["ModelInfo"] = {}
 
                     for param in params:
                         # print(f"Processing param: {param}")
@@ -105,16 +109,27 @@ def processMode(args):
                         elif type(paramStat) == dict:
                             Stats["Tegrastats"][param] = {}
 
-                            for key, val in paramStat.items():
-                                if type(val[0]) == list:
+                            if param == "CPU":
+                                for key, val in paramStat.items():
+                                    Stats["Tegrastats"][param][key] = {"min":None, "max":None, "avg":None}
                                     tempVal = np.array(val)
-                                    Stats["Tegrastats"][param][key] = list(np.round(np.mean(tempVal,axis=0),4))
-                                else:
-                                    Stats["Tegrastats"][param][key] = np.round(float(sum(val))/len(val),4)
+                                    Stats["Tegrastats"][param][key]["avg"] = np.round(np.mean(tempVal,axis=0),2).tolist()
+                                    Stats["Tegrastats"][param][key]["min"] = np.round(np.min(tempVal,axis=0),2).tolist()
+                                    Stats["Tegrastats"][param][key]["max"] = np.round(np.max(tempVal,axis=0),2).tolist()
+                            else:
+                                for key, val in paramStat.items():
+                                    Stats["Tegrastats"][param][key] = {"min":None, "max":None, "avg":None}
+                                    Stats["Tegrastats"][param][key]["avg"] = round(float(sum(val))/len(val),2)
+                                    Stats["Tegrastats"][param][key]["min"] = round(min(val),2)
+                                    Stats["Tegrastats"][param][key]["max"] = round(max(val),2)
 
                     for net, netStats in line["stageSummary"].items():
-                        Stats["StageInfo"][net] = {}
+
+                        # Add model parameters, macs and flops
+                        Stats["ModelInfo"][net] = {}
+
                         for compComponent, DevStats in netStats.items():
+
                             del Stats["stageSummary"][net][compComponent]["infDurations"]
                             if len(DevStats["infDurations"]) == 0:
                                 Stats["stageSummary"][net][compComponent]["avgInfTime"] = -1
@@ -127,10 +142,16 @@ def processMode(args):
                             else:
                                 Stats["stageSummary"][net][compComponent]["avgTransferTime"] = sum(DevStats["transferDurations"])/len(DevStats["transferDurations"])
                             
-                            Stats["StageInfo"][net][compComponent] = {"params":DevStats["params"], "macs":DevStats["macs"], "flops":DevStats["flops"]}
+                            del Stats["stageSummary"][net][compComponent]["macs"]
+                            del Stats["stageSummary"][net][compComponent]["params"]
+                            del Stats["stageSummary"][net][compComponent]["flops"]
+
+                            Stats["ModelInfo"][net][compComponent] = {"params":DevStats["params"], "macs":DevStats["macs"].split("MACs")[0], "flops":DevStats["flops"]}
                     
 
-                    # print(f"Stats: {Stats}")
+                    for statsKey, statsVal in Stats["Tegrastats"].items():
+                        print(f"{statsKey}: {statsVal}")
+
                     newFileName = f"Mode{mode}_"+"_".join(fileName.split("_")[1:])
                     filePath = os.path.join(OutFileRoot,newFileName)
                     with open(filePath,"w") as jsonFile:
