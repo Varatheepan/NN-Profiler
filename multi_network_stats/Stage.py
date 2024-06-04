@@ -19,7 +19,7 @@ class Stage:
         self.device = Device        
 
         # Assign the layerStage to the device
-        self.assignToDevice()
+        self.status = self.assignToDevice()
         
         # A queue to buffer the inputs to the stage
         self.InputQueue = None
@@ -146,7 +146,12 @@ class Stage:
 
     def assignToDevice(self):
         """ Assign the stage to the device."""
-        self.layerSet.to(self.device)
+        try:
+            self.layerSet.to(self.device)
+            return True
+        except RuntimeError:
+            print("Error in assigning the stage to the device")
+            return False
 
 
     def putToQueue(self,x): 
