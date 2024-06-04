@@ -21,6 +21,7 @@ from multi_network_stats.NetworkMappingGenerator import MappingGenerator
 from layer_stats.utils.checker import get_model, get_model_list
 from layer_stats.utils.operations import CustomOpExecutor, database_spawn
 from MappingDBSampler import MappingDataExtractor
+from tegrestats.tegrastats_utils import get_params
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -33,10 +34,6 @@ project_path = Path(__file__).resolve().parents[0]
 sample_set = ['img1.jpg']#, 'img2.jpg', 'img3.jpg']
 
 custom_model_list = ['alexnet','mobilenet_v2','mobilenet_v3_large']
-# randSeed = 34
-
-Parameters = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR", "VDD_IN"]
-model_list = get_model_list()
 
 default_preprocess = transforms.Compose([
     transforms.Resize(256),
@@ -54,7 +51,7 @@ def arguments_parser():
     parser.add_argument("--num_samples", default=20, type=int, help="the number of samples to be generated for thie selected mode.")
     parser.add_argument("--device_list", default=["cpu","cuda"], help="The devices to run the experiment on.")
     parser.add_argument("--device_priorities", default=None, help="The proirities of using the devices for mapping. Default will give equal priority each device.")
-    parser.add_argument("--model_list", default=get_model_list(),help="The list of models to be used to generate the dataset.")
+    parser.add_argument("--model_list", default=None,help="The list of models to be used to generate the dataset.")
     parser.add_argument("--single_nets", action='store_true', help="Whether to generate single network mappings.")
     parser.add_argument("--gpu_only_maps", action='store_true', help="Whether to generate mappings with only GPU devices.")
     parser.add_argument("--numNetsRange", default=[5,10], nargs=2, type=int, help="The range of number of networks to be used in the mapping.")
@@ -64,8 +61,7 @@ def arguments_parser():
     parser.add_argument("--smpl_duration", default=30, type=int, help="The time interval to to run a workload for the measurements.")
     
     # Tegratstats related parameters
-    parser.add_argument("--tgr_params", default=["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","APE","PLL","MCPU","PMIC","Tboard","GPU","BCPU","thermal","Tdiode","VDD_SYS_GPU","VDD_SYS_SOC","VDD_4V0_WIFI","VDD_IN","VDD_SYS_CPU","VDD_SYS_DDR"],\
-                        nargs='+' ,help="A space seperatedlist of parameters from the defaults list of parameters to extract from tegratstats.")
+    parser.add_argument("--tgr_params", default=[], nargs='+' ,help="A space seperatedlist of parameters to extract from tegratstats.")
     parser.add_argument("--eval_tgr", action='store_true' ,help="Whether to evaluate tegrastats parameters. Intended for power evaluation.")
     parser.add_argument("--tgr_interval", default=50,type=int, help="The tegrastats data sampling interval. Data sampled at every `tgr_interval` mS time.")
     # parser.add_argument("--smpl_duration", default=30, type=int, help="The time duration to run sample tegrastats data for a layer.")
@@ -78,12 +74,15 @@ def arguments_parser():
     parser.add_argument("--max_split_nets", default=-1, type=int, help="The maximum number of networks to be split in a mapping.")
     parser.add_argument("--seed", default=0, type=int, help="The seed to be used for random number generation.")
 
+    parser.add_argument("--batch_size", default=1, type=int, help="The batch size to be used for the inference.")
+
     return parser.parse_args()
 
 def InitializeParams(args):
     print("The follwoing parameters are initialized for the experiment:")
     print(f"MODE: {args.mode}")
     print(f"SAMPLING DURATION: {args.smpl_duration}")
+    print(f"BATCH SIZE: {args.batch_size}")
     if args.eval_tgr:
         # print(f"Tegrastats configuration: \nSAMPLING INTERVAL: {args.tgr_interval}\nSAMPLING DURATION: {args.smpl_duration}\
         #     \nSAMPLING BOUNDRY: {args.tgr_smpl_boundry}")
@@ -102,22 +101,9 @@ def InitializeParams(args):
     if args.eval_tgr:
 
         # Available Parameters to be sampled from tegrastats. Listed in the order params appear in the command output.
-        AvailParams = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","APE","PLL","MCPU","PMIC","Tboard","GPU","BCPU","thermal","Tdiode","VDD_SYS_GPU","VDD_SYS_SOC","VDD_4V0_WIFI","VDD_IN","VDD_SYS_CPU","VDD_SYS_DDR"]
+        AvailParams = get_params(args.jetsonDevice)
 
-        ''' Parameters which might be usful to capture for this project are listed. Check Tegrastats to find other parameters
-        "VDD_SYS_CPU"   : CPU Power usage      
-        "VDD_SYS_GPU"   : GPU Power usage 
-        "VDD_SYS_SOC"   : SOC Power usage 
-        "VDD_SYS_DDR"   : RAM Power usage 
-        "CPU"           : CPU utilization percentage and frequency 
-        "EMC_FREQ"      : RAM utilization percentage and frequency
-        "GPU"           : GPU Temperature
-        "BCPU"          : BCPU Temperature
-        "MCPU"          : MCPU Temperature
-        '''
-
-        # Overwrite the tegarstasts parameters
-        # Define a custom set of parameters to be extracted from tegerastats. Defaults to current device power if left empty. 
+        # Define a custom set of parameters to be extracted from tegerastats. Defaults to available parameters. 
         OverWriteParams = args.tgr_params
         if len(OverWriteParams):
             Paramtemp = []
@@ -130,6 +116,10 @@ def InitializeParams(args):
                 print(f"Parameters `{InvalidParams}` not identified in Available Parameters")
                 return ModeS, Parameters
             Parameters = Paramtemp
+        
+        else:
+            Parameters = AvailParams
+        
         print(f"Parameters sampled: {Parameters}\n")
 
     return ModeS, Parameters
@@ -158,13 +148,16 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
         print(f"Tegrastats Sampling Frequency: {sampling_freq} Hz")
         print(f"Number of tegrastat samples to be captured for each mapping: {tgr_NS}")
 
+        # Get the list of models to be used for the experiment
         if type(args.model_list) == str:
             model_list = args.model_list.split(",")
-        elif type(args.model_list) == list:
-            model_list = args.model_list
+        elif args.model_list is None:
+            model_list = get_model_list(args.jetsonDevice)
         else:
             print("Invalid model list")
             return
+        print(f"Models to be used: {model_list}")
+
         random.shuffle(model_list)
 
         NumModelsCases = list(range(args.numNetsRange[0],args.numNetsRange[1]+1))
@@ -186,7 +179,11 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
 
         image = Image.open("data/imagenet/img1.jpg")
         image = default_preprocess(image)
-        image = image.unsqueeze(0)
+
+        if args.batch_size == 1:
+            image = image.unsqueeze(0)
+        else:
+            image = image.repeat(args.batch_size,1,1,1)
 
         numProcessedMappings = 0
 
@@ -196,7 +193,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
             if trailRun:
                 # Randomly choose n number of  models accroding to the case
                 Model_set = np.random.choice(model_list,min(len(model_list),5), replace = False)
-                MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,model_list,NumSamples=1,device_prioriy = args.device_priorities, seed=randSeed)
+                MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=1,device_prioriy = args.device_priorities, seed=randSeed)
                 ObjStages,mapping = MapperObj.iter()
                 InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
                 trailRun = False
