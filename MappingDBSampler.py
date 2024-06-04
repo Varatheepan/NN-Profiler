@@ -14,6 +14,9 @@ from copy import deepcopy
 from pathlib import Path
 import subprocess
 import signal
+from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
+# from thop import profile
+# from thop import clever_format
 
 from multi_network_stats.Stage import Stage
 from multi_network_stats.NetworkMappingGenerator import MappingGenerator
@@ -26,8 +29,6 @@ from tegrestats.tegrastats_utils import analyze_power_stats
 # Project path
 project_path = Path(__file__).resolve().parents[0]
 
-Parameters = ["RAM", "SWAP","CPU","EMC_FREQ","GR3D_FREQ","MCPU","GPU","BCPU","VDD_SYS_GPU","VDD_SYS_SOC","VDD_SYS_CPU","VDD_SYS_DDR"]
-
 default_preprocess = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
@@ -37,7 +38,6 @@ default_preprocess = transforms.Compose([
         std=[0.229, 0.224, 0.225]
 )])
 
-# Running_active = True
 # For pipelined implementaion
 def RunStagesSequential(stageList:list, imgQueue):
     global Running_active
@@ -54,7 +54,6 @@ def RunStagesSequential(stageList:list, imgQueue):
         for stageN in stageList:
             x = stageN.forwardSeq(x)
         infCount += 1  
-    # print("Number of inferences: ", infCount)
 
 def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_NS:int = None):
     try:
@@ -69,21 +68,16 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
 
 
         print("Mapping: ", mapping)
-        # print("ObjStages: ", ObjStages)
 
         if args.eval_thr:
             ##########################################################
                         # Throughtput capturing 
             ########################################################## 
-            # threadDict= {}
 
             print("Throughput evaluation ...")
 
             for model_name in model_list:            
                 threadDict[model_name] = threading.Thread(target = RunStagesSequential, args = (ObjStages[model_name],image))
-
-            # print("threadDict: ", threadDict)
-            # print("Number of stages: ", len(threadDict))
 
             InferenceSummary = {model_name:{} for model_name in model_list}
             
@@ -98,7 +92,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             Running_active = False
 
             t2 = time.time()
-            # InferenceSummary = {model_name:{} for model_name in model_list}
+            
             for model_name in ObjStages.keys():
                 for stage in ObjStages[model_name]:
                     if stage.device.type not in InferenceSummary[model_name]:
@@ -164,19 +158,49 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             for thread_name in threadDict.keys():
                 threadDict[thread_name].join()
             
-            power_stats = analyze_power_stats(tempPath,' ', Parameters)
-
-            # # Count the number of samples for each power stat
-            # powerStatCount = {key:len(value) for key,value in power_stats.items()}
-            # print(f"Power stats data sample count: {powerStatCount}\n")
+            power_stats = analyze_power_stats(tempPath,' ', Parameters, args.jetsonDevice)
 
             thread_names = list(threadDict.keys())
             for thread_name in thread_names:
                 threadDict.pop(thread_name)
+        
+        #########################################################
+        # Profile the stage to get the flops, macs, and params
+        #########################################################
+        if InferenceSummary is None:
+            InferenceSummary = {model_name:{} for model_name in model_list}
 
-            for model_name in model_list:
-                for stage in ObjStages[model_name]:
-                    stage.removeStage()
+
+        for model_name in model_list:
+            for stage in ObjStages[model_name]:
+                if stage.device.type not in InferenceSummary[model_name]:
+                        InferenceSummary[model_name][stage.device.type] = {}
+                try:
+                    # DeepSpeed
+                    prof = FlopsProfiler(stage.layerSet)
+                    prof.start_profile()
+                    x = torch.randn(tuple(stage.inputSize))
+                    stage.layerSet.to("cpu")
+                    stage.layerSet(x)
+                    flops = prof.get_total_flops(as_string=True)
+                    macs = prof.get_total_macs(as_string=True)
+                    params = prof.get_total_params(as_string=True)
+                    prof.end_profile()
+                except Exception as e:
+                    print("Profiling error: ", e)
+                    flops, macs, params = None, None, None
+
+                # # Thops
+                # macs, params = profile(stage.layerSet.to("cpu"), inputs=(torch.randn(tuple(stage.inputSize)), ))
+                # macs, params = clever_format([macs, params], "%.3f")
+                # print(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
+                
+                InferenceSummary[model_name][stage.device.type]["macs"] = macs
+                InferenceSummary[model_name][stage.device.type]["params"] = params 
+                InferenceSummary[model_name][stage.device.type]["flops"] = flops
+                    
+                # Remove the stage layerSet to avoid memory issues
+                stage.removeStage()
 
         return InferenceSummary, power_stats
     except Exception as e1:
