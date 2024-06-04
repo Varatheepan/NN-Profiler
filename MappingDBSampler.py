@@ -1,4 +1,3 @@
-
 import argparse
 import copy
 import json
@@ -14,9 +13,16 @@ from copy import deepcopy
 from pathlib import Path
 import subprocess
 import signal
-from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
-# from thop import profile
-# from thop import clever_format
+try:
+    from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
+    DeepSPeed = True
+except Exception as e:
+    DeepSPeed = False
+    print("Import Error: ", e)
+    print("DeepSpeed cannot be loaded.")
+    pass
+from thop import profile
+from thop import clever_format
 
 from multi_network_stats.Stage import Stage
 from multi_network_stats.NetworkMappingGenerator import MappingGenerator
@@ -175,26 +181,34 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             for stage in ObjStages[model_name]:
                 if stage.device.type not in InferenceSummary[model_name]:
                         InferenceSummary[model_name][stage.device.type] = {}
-                try:
-                    # DeepSpeed
-                    prof = FlopsProfiler(stage.layerSet)
-                    prof.start_profile()
-                    x = torch.randn(tuple(stage.inputSize))
-                    stage.layerSet.to("cpu")
-                    stage.layerSet(x)
-                    flops = prof.get_total_flops(as_string=True)
-                    macs = prof.get_total_macs(as_string=True)
-                    params = prof.get_total_params(as_string=True)
-                    prof.end_profile()
-                except Exception as e:
-                    print("Profiling error: ", e)
-                    flops, macs, params = None, None, None
 
-                # # Thops
-                # macs, params = profile(stage.layerSet.to("cpu"), inputs=(torch.randn(tuple(stage.inputSize)), ))
-                # macs, params = clever_format([macs, params], "%.3f")
-                # print(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
-                
+                flops, macs, params = None, None, None
+
+                if DeepSPeed:
+                    try:
+                        # DeepSpeed
+                        prof = FlopsProfiler(stage.layerSet)
+                        prof.start_profile()
+                        x = torch.randn(tuple(stage.inputSize))
+                        stage.layerSet.to("cpu")
+                        stage.layerSet(x)
+                        flops = prof.get_total_flops(as_string=True)
+                        macs = prof.get_total_macs(as_string=True)
+                        params = prof.get_total_params(as_string=True)
+                        prof.end_profile()
+                    except Exception as e:
+                        print("Profiling error: ", e)
+                        flops, macs, params = None, None, None
+
+                if params is None:
+                    # use thops
+                    macs, params = profile(stage.layerSet.to("cpu"), inputs=(torch.randn(tuple(stage.inputSize)), ))
+                    macs, params = clever_format([macs, params], "%.3f")
+                    # print(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
+
+                if DeepSPeed and (flops is None):
+                    print("Warning: DeepSpeed profiling failed. Using thop for profiling.")
+                              
                 InferenceSummary[model_name][stage.device.type]["macs"] = macs
                 InferenceSummary[model_name][stage.device.type]["params"] = params 
                 InferenceSummary[model_name][stage.device.type]["flops"] = flops
