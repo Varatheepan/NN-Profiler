@@ -58,6 +58,9 @@ class MappingGenerator:
         self.mapCases = []
         self.generate_mapCases(self.NumSamples,CaseSamples)
 
+        # List of generated mapping samples
+        self.mappingsList = []
+
         # A dictionary of number of layers per network
         self.numLayerDict = {}
 
@@ -159,7 +162,7 @@ class MappingGenerator:
         return layers
         
 
-    def generate_mapping(self, case):
+    def generate_mapping(self, case, allow_gpu_only_mapping:bool = False):
         """
         TODO: Handle if only one device is present.  --implemented
         Split the layers into stages(num stages <= num_devices) and assign a device for each stage.
@@ -185,10 +188,22 @@ class MappingGenerator:
         else:
             # Models to run in a stand-alone stage
             Sts_models = np.random.choice(model_list,NumSts,replace=False)
-
+            
+            usedCompComponents = []
+            allowedCompComponents = deepcopy(self.compComponentList)
+            allowedCompProb = deepcopy(self.deviceProb)
+        
             # Random selection of devices for each stand-alone stage
             for model_name in Sts_models:
-                mapping[model_name] = {self.numLayerDict[model_name]:np.random.choice(self.compComponentList,1,replace=True,p = self.deviceProb)[0]}
+                # restrict the use of gpu for all the models if not allowed 
+                if not  allow_gpu_only_mapping:   
+                    if len(mapping) > 0:
+                        if usedCompComponents.count("cuda") == len(model_list)-1:
+                            allowedCompComponents.remove("cuda")     
+                            allowedCompProb.remove(allowedCompProb[self.compComponentList.index("cuda")])    
+                            allowedCompProb = list(np.array(allowedCompProb)/float(sum(allowedCompProb)))               
+                mapping[model_name] = {self.numLayerDict[model_name]:np.random.choice(allowedCompComponents,1,replace=True,p = allowedCompProb)[0]}
+                usedCompComponents.append(mapping[model_name][self.numLayerDict[model_name]])
             
             # List of models to be splitted among some devices
             Spl_models = [model_name for model_name in model_list if model_name not in Sts_models]
@@ -315,6 +330,9 @@ class MappingGenerator:
                         layerBlock[str(layer_ID)] = layer
                     stage = Stage(torch.device(Devices[idx]),nn.Sequential(layerBlock),stagePosition=2)
                 
+                if stage.status == False:
+                    # print("Stage creation failed! Cuda out of Memory!")
+                    return False
                 stages.append(stage)               
 
         return stages
@@ -332,7 +350,6 @@ class MappingGenerator:
             if not CaseSamples or len(CaseSamples) < num_cases:
             
                 # A function to determine the number of sample to generate per case
-                # W = np.array([np.exp(-0.5*val) for val in range(num_cases)])
                 W = np.array([1.0/num_cases for val in range(num_cases)])
 
                 normalizedW = W/W.sum()
@@ -343,9 +360,8 @@ class MappingGenerator:
                 # # Assign remaining sample to case 0 to meet the total num of samples
                 # CaseSamples[0] = CaseSamples[0] + (NumSamples - sum(CaseSamples))
                 
-                # Assign remaining samples across the cases
-                for i1 in range(NumSamples % num_cases):
-                    CaseSamples[i1] += 1
+                # Assign remaining samples to the single CC case
+                CaseSamples[-1] += NumSamples % num_cases
                 
                 if len(CaseSamples) < num_cases: print(F"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
                 
@@ -417,7 +433,7 @@ class MappingGenerator:
 
             
 
-    def iter(self, Mappings:dict = None):
+    def iter(self, Mappings:dict = None, allow_gpu_only_mapping:bool = False):
         """
         Create a new mapping sample
         """
@@ -432,13 +448,25 @@ class MappingGenerator:
         if Mappings != None:
             MapValid = self.validateMapping(Mappings)
 
-        if MapValid == False:
+        retries = 0
+        while MapValid == False:
+            if sum(self.mapCaseCounts) == self.NumSamples:
+                return False,False
             if self.mapCaseCounts[self.caseIdx] != self.mapCases[self.caseIdx]:
-                Mappings = self.generate_mapping(self.caseIdx)
+                Mappings = self.generate_mapping(self.caseIdx,allow_gpu_only_mapping)
             else:
                 while self.mapCaseCounts[self.caseIdx] == self.mapCases[self.caseIdx]:
                     self.caseIdx +=1
-                Mappings = self.generate_mapping(self.caseIdx)
+                Mappings = self.generate_mapping(self.caseIdx,allow_gpu_only_mapping)
+            if Mappings not in self.mappingsList:
+                MapValid = True
+            else:
+                retries += 1
+                if retries == 10:
+                    print("Couldn't create new mapping. Exiting!")
+                    return False,False
+        
+        self.mappingsList.append(Mappings)
 
         # TODO: implement a memory overflow management
         # MappingSucess = False
@@ -448,6 +476,9 @@ class MappingGenerator:
         for model_name,mapping in Mappings.items():
             # try:
             stages = self.create_network_stages(model_name,mapping)
+            if stages == False:
+                print("Stage creation failed! Exiting!")
+                return True,False
             stageDict[model_name] = stages
 
         self.mapCaseCounts[self.caseIdx] += 1
