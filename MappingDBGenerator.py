@@ -49,12 +49,16 @@ default_preprocess = transforms.Compose([
 
 def arguments_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--jetsonDevice", default="Tx2", help="The Jetson device to run the experiment on.")
+    parser.add_argument("--jetsonDevice", default="Tx2",choices=["Orin","Tx2","Xavier"], help="The Jetson device to run the experiment on.")
     parser.add_argument("--mode", required=True, type=int, help="The mode that is being experimented. Make sure to switch the mode in Tx2.")
     parser.add_argument("--num_samples", default=20, type=int, help="the number of samples to be generated for thie selected mode.")
     parser.add_argument("--device_list", default=["cpu","cuda"], help="The devices to run the experiment on.")
     parser.add_argument("--device_priorities", default=None, help="The proirities of using the devices for mapping. Default will give equal priority each device.")
     parser.add_argument("--model_list", default=get_model_list(),help="The list of models to be used to generate the dataset.")
+    parser.add_argument("--single_nets", action='store_true', help="Whether to generate single network mappings.")
+    parser.add_argument("--gpu_only_maps", action='store_true', help="Whether to generate mappings with only GPU devices.")
+    parser.add_argument("--numNetsRange", default=[5,10], nargs=2, type=int, help="The range of number of networks to be used in the mapping.")
+    parser.add_argument("--samples_per_set", default=20, type=int, help="The number of samples to be generated for each set of networks.")
     parser.add_argument("--imgs", default=sample_set, nargs='+',help="A comma seperated list of images to run the experimets. \
                         Images should be stored in data/imagenet.")
     parser.add_argument("--smpl_duration", default=30, type=int, help="The time interval to to run a workload for the measurements.")
@@ -151,11 +155,19 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
 
         sampling_freq = 1000.0/args.tgr_interval
         tgr_NS = int((1000/args.tgr_interval)*args.smpl_duration) 
+        print(f"Tegrastats Sampling Frequency: {sampling_freq} Hz")
+        print(f"Number of tegrastat samples to be captured for each mapping: {tgr_NS}")
 
-        model_list = args.model_list
+        if type(args.model_list) == str:
+            model_list = args.model_list.split(",")
+        elif type(args.model_list) == list:
+            model_list = args.model_list
+        else:
+            print("Invalid model list")
+            return
         random.shuffle(model_list)
 
-        NumModelsCases = range(5,11)
+        NumModelsCases = list(range(args.numNetsRange[0],args.numNetsRange[1]+1))
 
         NumCases = len(NumModelsCases)
 
@@ -165,8 +177,8 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
             MappingsperCases[-(i+1)] += 1
 
         print("The following two lists provide the number of models and mappings to be generated for each case.")
-        print(f"Number of Models per Cases: {NumModelsCases}")
-        print(f"Number of Mappings per Cases: {MappingsperCases}\n")
+        print(f"Number of Models for each case: {NumModelsCases}")
+        print(f"Number of Mappings for each case: {MappingsperCases}\n")
 
         GeneratedModelsPerCases = [0]*NumCases
 
@@ -178,22 +190,85 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
 
         numProcessedMappings = 0
 
+        # Generate single network mappings
+        if args.single_nets:
+
+            if trailRun:
+                # Randomly choose n number of  models accroding to the case
+                Model_set = np.random.choice(model_list,min(len(model_list),5), replace = False)
+                MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,model_list,NumSamples=1,device_prioriy = args.device_priorities, seed=randSeed)
+                ObjStages,mapping = MapperObj.iter()
+                InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
+                trailRun = False
+
+            for model_name in model_list:
+                
+                # Number of sets of networks created for the current case
+                NumObjs = 1
+
+                for device in args.device_list:
+
+                    # Mappier object with one network and one device(GPU)
+                    MapperObj = MappingGenerator(args.jetsonDevice,[device],[model_name],NumSamples=1,device_prioriy = [1], seed=randSeed)
+
+                    ObjStages,mapping = MapperObj.iter()
+
+                    if args.eval_tgr:
+                        InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
+                    else:
+                        InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image)
+                    numProcessedMappings += 1
+
+                    # Path to store the mapping data samples
+                    if not os.path.exists(os.path.join(project_path, 'Dataset/Multinet', ModeS)):
+                        os.makedirs(os.path.join(project_path, 'Dataset/Multinet', ModeS))
+
+                    # File name to store the mapping data samples
+                    stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/SingleNet_Map{numProcessedMappings}_nm_{1}_set_{NumObjs}_classA.json"
+
+                    # Convert the mapping object keys to strings 
+                    mappingS = {}
+                    for net, mapN in mapping.items():
+                        mappingS[net] = {str(ID):dev for ID,dev in mapping[net].items()}
+                    outJson = {"mapping":mappingS,"stageSummary": InferenceSummary, "power":power_stats,"samplingDuration":args.smpl_duration}
+
+                    # Write data to a json file
+                    with open(stats_file_name, "w") as stats_file:
+                        json.dump(outJson,stats_file)
+                    
+                    ObjStages = []
+                    mapping = []
+
+                    # Remove the object stages from  memory
+                    del ObjStages
+                    gc.collect()
+                NumObjs += 1
+
+            numProcessedMappings = 0
+
         # while GeneratedModelsPerCases[caseIdx] < MappingsperCases[caseIdx]:
         for caseIdx in range(NumCases):
 
             print(f"New case with number of models in each mapping = {NumModelsCases[caseIdx]}\n")
 
-            # Number of MappingeGenerator objects created for the current case
-            NumObjs = 0
+            # Number of sets of networks created for the current case
+            NumObjs = 1
 
             while GeneratedModelsPerCases[caseIdx] < MappingsperCases[caseIdx]:
 
                 # Number of mappings to generate from each object
-                SmplPerObj = 20 #int(min(20,MappingsperCases[caseIdx], MappingsperCases[caseIdx] - 20*NumObjs))
+                SmplPerObj = args.samples_per_set #int(min(20,MappingsperCases[caseIdx], MappingsperCases[caseIdx] - 20*NumObjs))
+
+                # Indicate if the split mapping has been started
+                splitMapperStarted = False
 
                 # Randomly choose n number of  models accroding to the case
                 Model_set = np.random.choice(model_list,NumModelsCases[caseIdx], replace = False)
 
+                # Set of models to be used for the mapper object
+                print("\nModel set: ", Model_set)
+
+                # Warm up the system with a trail run 
                 if trailRun:
                     MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
                     ObjStages,mapping = MapperObj.iter()
@@ -201,26 +276,55 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     trailRun = False
 
                 CaseList = None
-                if args.max_split_nets > 0:
+                if args.max_split_nets >= 0:
                     CaseList = [0]*(NumModelsCases[caseIdx]+1)
-                    CaseList[NumModelsCases[caseIdx] - args.max_split_nets:] = [int(SmplPerObj/(args.max_split_nets+1))]*(args.max_split_nets+1)
+                    if args.gpu_only_maps:
+                        CaseList[NumModelsCases[caseIdx] - args.max_split_nets:] = [int(np.floor(((SmplPerObj-1)/(args.max_split_nets+1))))]*(args.max_split_nets+1)
+                        # Assign the remaining samples to the last case
+                        CaseList[-1] += (SmplPerObj-1)%(args.max_split_nets+1)
+                    else:
+                        CaseList[NumModelsCases[caseIdx] - args.max_split_nets:] = [int(SmplPerObj/(args.max_split_nets+1))]*(args.max_split_nets+1)
+                        # Assign the remaining samples to the last case
+                        CaseList[-1] += SmplPerObj%(args.max_split_nets+1)
 
-                    for i in range(SmplPerObj%(args.max_split_nets+1)):
-                        CaseList[-(i+1)] += 1
-                    
+                    # # Assign the remaining samples to the last few cases
+                    # for i in range(SmplPerObj%(args.max_split_nets+1)):
+                    #     CaseList[-(i+1)] += 1
+
                     print(f"CaseList: {CaseList}")
 
-
-                # TODO: Determine the number of parallel network cases (eg: range(4,11)). Randomly sample n number of network. --> Done
-                MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj,CaseSamples=CaseList,device_prioriy = args.device_priorities, seed=randSeed)
+                # Map all networks in the model set to GPU
+                if args.gpu_only_maps:
+                    MapperObj = MappingGenerator(args.jetsonDevice,["cuda"],Model_set,NumSamples=[1],CaseSamples=None,device_prioriy = args.device_priorities, seed=randSeed)
+                else:
+                    MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj,CaseSamples=CaseList,device_prioriy = args.device_priorities, seed=randSeed)
+                    splitMapperStarted = True
+                
+                # Incremented upon mappings fail due to cuda out of memory error
+                retryCount = 0
 
                 print("\n")
+
+                # Store the current case mapping counts
+                OldMapperObjCaseCounts = deepcopy(MapperObj.mapCaseCounts)
+
+                # enumerate mapper among the defined number of samples
                 ObjStages,mapping = MapperObj.iter()
 
                 while ObjStages != False:
-                    # ObjStages = []
-                    # mapping = []
-                    # ObjStages,mapping = MapperObj.iter()
+
+                    while ObjStages == True and mapping == False:
+                        retryCount += 1
+                        ObjStages,mapping = MapperObj.iter()
+                        if retryCount > 10:
+                            print("Retries exceeded! Failed to generate mapping due to cuda out of memory.")
+                            break
+                    
+                    if ObjStages == False:
+                        break
+                    
+                    # reset the retry count
+                    retryCount = 0
 
                     print(f"Mapping ID {numProcessedMappings}")
 
@@ -229,16 +333,24 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     else:
                         InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image)
                     
-                    # if not trailRun:
                     numProcessedMappings += 1
 
                     # Path to store the mapping data samples
                     if not os.path.exists(os.path.join(project_path, 'Dataset/Multinet', ModeS)):
                         os.makedirs(os.path.join(project_path, 'Dataset/Multinet', ModeS))
+                    
+                    # Check the difference in the number of mappings generated for the current case
+                    Diff = [i-j for i,j in zip(MapperObj.mapCaseCounts,OldMapperObjCaseCounts)]
+
+                    print(f"Diff: {Diff}")
 
                     # File name to store the mapping data samples
-                    # stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/Map{numProcessedMappings}_sf_{sampling_freq}_sb_{args.tgr_smpl_boundry}.json"
-                    stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/Map{numProcessedMappings}_nm_{NumModelsCases[caseIdx]}_sf_{sampling_freq}.json"
+                    if splitMapperStarted == False:
+                        stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/MultiNet_Map{numProcessedMappings}_nm_{NumModelsCases[caseIdx]}_set_{NumObjs}_classB.json"
+                    elif 1 in Diff and Diff.index(1) == len(OldMapperObjCaseCounts)-1:
+                        stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/MultiNet_Map{numProcessedMappings}_nm_{NumModelsCases[caseIdx]}_set_{NumObjs}_classC.json"
+                    else:
+                        stats_file_name = f"{os.path.join(project_path, 'Dataset/Multinet', ModeS)}/MultiNet_Map{numProcessedMappings}_nm_{NumModelsCases[caseIdx]}_set_{NumObjs}_classD.json"
                     
                     # Convert the mapping object keys to strings 
                     mappingS = {}
@@ -246,7 +358,6 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                         mappingS[net] = {str(ID):dev for ID,dev in mapping[net].items()}
                     outJson = {"mapping":mappingS,"stageSummary": InferenceSummary, "power":power_stats,"samplingDuration":args.smpl_duration}
                     
-                    # if not trailRun:
                     # Write data to a json file
                     with open(stats_file_name, "w") as stats_file:
                         json.dump(outJson,stats_file)
@@ -257,24 +368,23 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     ObjStages = []
                     mapping = []
 
+                    # Store the current case mapping counts
+                    OldMapperObjCaseCounts = deepcopy(MapperObj.mapCaseCounts)
+
                     # Remove the object stages from  memory
                     del ObjStages
                     gc.collect()
 
+                    # when gpu_only_maps is enabled, generate one such mapping for each model set and run remaining mappings with all devices
+                    if not splitMapperStarted:
+                        MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj-1,CaseSamples=CaseList,device_prioriy = args.device_priorities, seed=randSeed)
+                        splitMapperStarted = True
+                    
                     print("\n")
                     ObjStages,mapping = MapperObj.iter()
 
-                    # print("\n")
-                
-                # NumObjs += 1
+                NumObjs += 1
 
-            # # Change the case index if defined number of sameple are generated for the currenet case
-            # if int(GeneratedModelsPerCases[caseIdx]) == int(MappingsperCases[caseIdx]):
-            #     if caseIdx == NumCases - 1:
-            #         print("Dataset generation completed!")
-            #         break 
-            #     else:
-            #         caseIdx += 1
         print("\nDataset generation completed!")
 
     except Exception as e1:
