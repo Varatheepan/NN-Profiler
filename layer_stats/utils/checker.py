@@ -1,6 +1,23 @@
 
 import torch
+import torch.nn as nn
 import torchvision.models as models
+
+def get_num_layers(model:nn.Module):
+    count = 0
+    for module in model.children():
+        
+        if (isinstance(module, nn.Sequential) or isinstance(module, nn.ModuleList)):      
+            count += get_num_layers(module)           
+        else:
+            if isinstance(module, nn.Module):
+                if len(list(module.children())) > 0:
+                    count += get_num_layers(module)
+                else:
+                    count += 1
+            else:
+                print(f"Module type not added: {module.__class__.__name__}")
+    return count
 
 def banned_mods():
     """https://pytorch.org/vision/stable/models.html

@@ -59,6 +59,7 @@ def arguments_parser():
     parser.add_argument("--imgs", default=sample_set, nargs='+',help="A comma seperated list of images to run the experimets. \
                         Images should be stored in data/imagenet.")
     parser.add_argument("--smpl_duration", default=30, type=int, help="The time interval to to run a workload for the measurements.")
+    parser.add_argument("--funcLayerCount", action='store_true', help="Whether to count the number of functional layers in the network.")
     
     # Tegratstats related parameters
     parser.add_argument("--tgr_params", default=[], nargs='+' ,help="A space seperatedlist of parameters to extract from tegratstats.")

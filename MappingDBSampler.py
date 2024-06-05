@@ -27,7 +27,7 @@ from thop import clever_format
 from multi_network_stats.Stage import Stage
 from multi_network_stats.NetworkMappingGenerator import MappingGenerator
 from layer_stats.rawDataGeneration.PowerLatencySampler import flatten_layers
-from layer_stats.utils.checker import get_model
+from layer_stats.utils.checker import get_model, get_num_layers
 from layer_stats.utils.operations import CustomOpExecutor, database_spawn
 
 from tegrestats.tegrastats_utils import analyze_power_stats
@@ -212,6 +212,8 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                 InferenceSummary[model_name][stage.device.type]["macs"] = macs
                 InferenceSummary[model_name][stage.device.type]["params"] = params 
                 InferenceSummary[model_name][stage.device.type]["flops"] = flops
+                if args.funcLayerCount:
+                    InferenceSummary[model_name][stage.device.type]["functionalLayerCount"] = get_num_layers(stage.layerSet)
                     
                 # Remove the stage layerSet to avoid memory issues
                 stage.removeStage()
