@@ -146,11 +146,11 @@ def processMode(args):
                             del Stats["stageSummary"][net][compComponent]["params"]
                             del Stats["stageSummary"][net][compComponent]["flops"]
 
-                            Stats["ModelInfo"][net][compComponent] = {"params":DevStats["params"], "macs":DevStats["macs"].split("MACs")[0], "flops":DevStats["flops"]}
+                            Stats["ModelInfo"][net][compComponent] = {"params":DevStats["params"], "macs":DevStats["macs"].split("MACs")[0], "flops":DevStats["flops"], "functionalLayerCount":DevStats["functionalLayerCount"]}
                     
 
-                    for statsKey, statsVal in Stats["Tegrastats"].items():
-                        print(f"{statsKey}: {statsVal}")
+                    # for statsKey, statsVal in Stats["Tegrastats"].items():
+                    #     print(f"{statsKey}: {statsVal}")
 
                     newFileName = f"Mode{mode}_"+"_".join(fileName.split("_")[1:])
                     filePath = os.path.join(OutFileRoot,newFileName)
