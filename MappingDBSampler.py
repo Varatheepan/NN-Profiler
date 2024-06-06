@@ -202,7 +202,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                         params = prof.get_total_params(as_string=True)
                         prof.end_profile()
                     except Exception as e:
-                        logger.Error(f"Profiling error in DeepSpeed: {e}")
+                        logger.error(f"Profiling error in DeepSpeed: {e}")
                         flops, macs, params = None, None, None
 
                 if params is None:
@@ -212,7 +212,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                         macs, params = clever_format([macs, params], "%.3f")
                         # logger.info(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
                     except Exception as e:
-                        logger.Error("Profiling error in Thops: {e}")
+                        logger.error("Profiling error in Thops: {e}")
                         macs, params = None, None
 
                 if DeepSPeed and (flops is None) and (not macs is None):
