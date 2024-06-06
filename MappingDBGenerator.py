@@ -76,6 +76,7 @@ def arguments_parser():
     parser.add_argument("--seed", default=0, type=int, help="The seed to be used for random number generation.")
 
     parser.add_argument("--batch_size", default=1, type=int, help="The batch size to be used for the inference.")
+    parser.add_argument("--remove_weights", action='store_true', help="Whether to remove the weights of the model after each mapping.")
 
     return parser.parse_args()
 
@@ -266,6 +267,20 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                 # Set of models to be used for the mapper object
                 print("\nModel set: ", Model_set)
 
+                if args.remove_weights:
+                    weightsPath = os.path.join(project_path, 'multi_network_stats/ModelCheckPoints')
+                    if os.path.exists(weightsPath):
+                        
+                        availableModels= os.listdir(weightsPath)
+                        
+                        removeWeights = [model for model in availableModels if model not in Model_set]
+
+                        for model in removeWeights:
+                            modelPath = os.path.join(weightsPath,model)
+                            if os.path.exists(modelPath):
+                                os.rmdir(modelPath)
+                                print(f"Removed weights for model: {model}")
+
                 # Warm up the system with a trail run 
                 if trailRun:
                     MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
@@ -317,6 +332,8 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                         if retryCount > 10:
                             print("Retries exceeded! Failed to generate mapping due to cuda out of memory.")
                             break
+                    if retryCount > 10:
+                        break
                     
                     if ObjStages == False:
                         break
@@ -324,7 +341,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     # reset the retry count
                     retryCount = 0
 
-                    print(f"Mapping ID {numProcessedMappings}")
+                    print(f"Mapping ID {numProcessedMappings + 1}")
 
                     if args.eval_tgr:
                         InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
@@ -386,10 +403,10 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
         print("\nDataset generation completed!")
 
     except Exception as e1:
-        print("\nError: ", e1)
+        print(f"\nError: {e1}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)
+        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
 
 if __name__ == "__main__":
     try:
@@ -404,8 +421,8 @@ if __name__ == "__main__":
         t2 = time.time()
         print(f"\nTime taken for Mode{args.mode}: {t2-t1} seconds")
     except Exception as e:
-        print("\nError: ", e)
+        print(f"\nError: {e}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)
+        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
 

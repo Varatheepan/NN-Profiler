@@ -145,6 +145,7 @@ def processMode(args):
                             del Stats["stageSummary"][net][compComponent]["macs"]
                             del Stats["stageSummary"][net][compComponent]["params"]
                             del Stats["stageSummary"][net][compComponent]["flops"]
+                            del Stats["stageSummary"][net][compComponent]["functionalLayerCount"]
 
                             Stats["ModelInfo"][net][compComponent] = {"params":DevStats["params"], "macs":DevStats["macs"].split("MACs")[0], "flops":DevStats["flops"], "functionalLayerCount":DevStats["functionalLayerCount"]}
                     
@@ -167,7 +168,7 @@ def processMode(args):
     except Exception as e1:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)
+        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
                     
 if __name__ == "__main__":
     try:
@@ -180,4 +181,4 @@ if __name__ == "__main__":
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)
+        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")

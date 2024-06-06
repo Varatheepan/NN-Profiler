@@ -178,7 +178,7 @@ def main():
                 model_name == "inception_v3", model_name == "regnet_y_128gf"))
         except Exception as e:
             Error_model_list[model_name] = e
-    print("Error_model_list: ", Error_model_list)
+    print(f"Error_model_list: {Error_model_list}")
 
 
 if __name__ == "__main__":

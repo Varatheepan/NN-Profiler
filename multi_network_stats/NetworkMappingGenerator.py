@@ -107,41 +107,10 @@ class MappingGenerator:
     def getInstances(self):
         # get the instances of the class
         return MappingGenerator.Instances
-    
-    # NOTE: eliminated
-    # def generate_mapping_combinations(self):
-    #     # TODO: generalize for different set of devices -> implemented
-    #     """
-    #     Generate the possible set of permutations for each combinations a neural network can be mapped across the given devices
-    #     """       
-    #     # # The possile pattern of mapping pairs ~ Num_of_devices_used : Pattern 
-    #     # self.mapPatterns = {1:[[0],[1]], 2:[[0,1],[1,0]]}
-
-    #     # Generate a set of permutations for each possible combination of devices
-    #     self.mapPatterns = [i for i in range(self.num_devices)]
-    #     for i in range(2,self.num_devices+1):
-    #         perms = list(permutations(range(self.num_devices),i))
-    #         for j in perms:
-    #             self.mapPatterns.append(j)
-
-    #     # self.mapPatterns = [[0],[1],[0,1],[1,0]]
-
     def get_layers(self,model_name):
         """
         Get the model weights and extract the layers
         """
-        
-        # # Instantiate the model
-        # if model_name in ["regnet_y_128gf", "regnet_y_16gf", "regnet_y_32gf", "vit_b_16", "vit_h_14", "vit_l_16"]:
-        #     model = get_model(model_name)
-        #     print(f'Found model {model_name} with pretrained weights')
-        # else:
-        #     try:
-        #         model = get_model(model_name)
-        #         print(f'Found model {model_name} with pretrained weights')
-        #     except Exception as e:
-        #         model = get_model(model_name)
-        #         print(f'Trying to load model {model_name} with weights DEFAULT')
 
         modelCkptPath = os.path.join(projectPath,"ModelCheckPoints",model_name,model_name+".ckpt")
 
@@ -258,11 +227,6 @@ class MappingGenerator:
         # Network with a stand-alone stage
         if len(mapping) == 1:
 
-            # # Adding all the layers to a sequencial block
-            # layerBlock = collections.OrderedDict()#nn.ModuleDict()
-            # for layer in layers:
-            #     layerBlock['0'] = layer
-
             modelCkptPath = os.path.join(projectPath,"ModelCheckPoints",model_name,model_name+".ckpt")
             model = torch.load(modelCkptPath)
             
@@ -363,7 +327,7 @@ class MappingGenerator:
                 # Assign remaining samples to the single CC case
                 CaseSamples[-1] += NumSamples % num_cases
                 
-                if len(CaseSamples) < num_cases: print(F"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
+                if len(CaseSamples) < num_cases: print(f"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
                 
             # The array of cases with keys denoting the number of stand alone network stages and the values are the total number of generated examples.
             # The rest of the networks will be splitted among devices randomly.
@@ -371,7 +335,7 @@ class MappingGenerator:
 
             self.mapCaseCounts = [0]*num_cases
 
-        print("self.mapCases: ",self.mapCases)
+        print(f"self.mapCases: {self.mapCases}")
 
     def download_model_weights(self):
 

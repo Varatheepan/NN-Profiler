@@ -226,8 +226,15 @@ class Stage:
         return self.InputQueue.empty()
     
     def removeStage(self):
-        self.layerSet.cpu()
-        del self.layerSet
-        gc.collect()
+        try:
+            self.layerSet.to("cpu")
+            torch.cuda.empty_cache()
+            time.sleep(0.5)
+            del self.layerSet
+            gc.collect()
+            return True
+        except:
+            # print("Could not remove the stage from the memory")
+            return False
 
 

@@ -196,7 +196,7 @@ def analyze_power_stats(txt_file: str, device,parameters: list, jetsonDevice: st
         print(f"Error: {e}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)
+        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
         return exc_type
     
 

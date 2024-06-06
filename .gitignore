@@ -29,3 +29,6 @@ tegrestats/tegrastats_utils copy.py
 tegrestats/tegrastats_utils2.py
 tegrestats/tegrastatsSample copy.txt
 tegrestats/tegrastatsSample.txt
+FunctionalLayerNum.txt
+testNumLayers.py
+multi_network_stats/postProcessMultinetDB.py.bkp

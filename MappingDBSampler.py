@@ -18,7 +18,7 @@ try:
     DeepSPeed = True
 except Exception as e:
     DeepSPeed = False
-    print("Import Error: ", e)
+    print(f"Import Error: {e}")
     print("DeepSpeed cannot be loaded.")
     pass
 from thop import profile
@@ -73,7 +73,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
         model_list = list(mapping.keys())
 
 
-        print("Mapping: ", mapping)
+        print(f"Mapping: , {mapping}")
 
         if args.eval_thr:
             ##########################################################
@@ -113,7 +113,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             
             t3 = time.time()
 
-            print("Time taken to stop threads: " , t3-t2)
+            print(f"Time taken to stop threads: {t3-t2}")
 
         if args.eval_tgr:
             #########################################################
@@ -157,7 +157,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             
             t2 = time.time()
 
-            print("Execution time: " , t2-t1)
+            print(f"Execution time: {t2-t1}")
             
             Running_active = False
 
@@ -178,7 +178,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
 
 
         for model_name in model_list:
-            for stage in ObjStages[model_name]:
+            for stageID,stage in enumerate(ObjStages[model_name]):
                 if stage.device.type not in InferenceSummary[model_name]:
                         InferenceSummary[model_name][stage.device.type] = {}
 
@@ -197,14 +197,18 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                         params = prof.get_total_params(as_string=True)
                         prof.end_profile()
                     except Exception as e:
-                        print("Profiling error: ", e)
+                        print(f"Profiling error in DeepSpeed: {e}")
                         flops, macs, params = None, None, None
 
                 if params is None:
-                    # use thops
-                    macs, params = profile(stage.layerSet.to("cpu"), inputs=(torch.randn(tuple(stage.inputSize)), ))
-                    macs, params = clever_format([macs, params], "%.3f")
-                    # print(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
+                    try:
+                        # use thops
+                        macs, params = profile(stage.layerSet.to("cpu"), inputs=(torch.randn(tuple(stage.inputSize)), ))
+                        macs, params = clever_format([macs, params], "%.3f")
+                        # print(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
+                    except Exception as e:
+                        print("Profiling error in Thops: {e}")
+                        macs, params = None, None
 
                 if DeepSPeed and (flops is None):
                     print("Warning: DeepSpeed profiling failed. Using thop for profiling.")
@@ -216,11 +220,14 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                     InferenceSummary[model_name][stage.device.type]["functionalLayerCount"] = get_num_layers(stage.layerSet)
                     
                 # Remove the stage layerSet to avoid memory issues
-                stage.removeStage()
+                ret = stage.removeStage()
+                if not ret:
+                    print(f"Waring: Error while removing {stageID} from {model_name}")
+        
 
         return InferenceSummary, power_stats
     except Exception as e1:
-        print("Error: ", e1)
+        print(f"Error: {e1}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)
+        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
