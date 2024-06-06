@@ -3,6 +3,7 @@ import json
 import sys
 import os
 import time
+import types
 from torchvision import transforms
 import torch
 import threading
@@ -15,6 +16,8 @@ import signal
 import random
 import numpy as np
 import gc
+import logging
+import shutil
 
 from multi_network_stats.Stage import Stage
 from multi_network_stats.NetworkMappingGenerator import MappingGenerator
@@ -33,8 +36,6 @@ project_path = Path(__file__).resolve().parents[0]
 # List of default images
 sample_set = ['img1.jpg']#, 'img2.jpg', 'img3.jpg']
 
-custom_model_list = ['alexnet','mobilenet_v2','mobilenet_v3_large']
-
 default_preprocess = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
@@ -48,7 +49,7 @@ def arguments_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--jetsonDevice", default="Tx2",choices=["Orin","Tx2","Xavier"], help="The Jetson device to run the experiment on.")
     parser.add_argument("--mode", required=True, type=int, help="The mode that is being experimented. Make sure to switch the mode in Tx2.")
-    parser.add_argument("--num_samples", default=20, type=int, help="the number of samples to be generated for thie selected mode.")
+    parser.add_argument("--num_samples", default=20, type=int, help="the number of samples to be generated for the selected mode.")
     parser.add_argument("--device_list", default=["cpu","cuda"], help="The devices to run the experiment on.")
     parser.add_argument("--device_priorities", default=None, help="The proirities of using the devices for mapping. Default will give equal priority each device.")
     parser.add_argument("--model_list", default=None,help="The list of models to be used to generate the dataset.")
@@ -77,20 +78,24 @@ def arguments_parser():
 
     parser.add_argument("--batch_size", default=1, type=int, help="The batch size to be used for the inference.")
     parser.add_argument("--remove_weights", action='store_true', help="Whether to remove the weights of the model after each mapping.")
+    parser.add_argument("--log_file", default=None, help="The log file to store the output of the experiment.")
+    parser.add_argument("--log_level", default="INFO", choices= ["DEBUG", "INFO"], help="The log level to be used for the experiment.")
+    # parser.add_argument("--disable_logging", action='store_true', help="Whether to disable logging and print in terminal.")
 
     return parser.parse_args()
 
-def InitializeParams(args):
-    print("The follwoing parameters are initialized for the experiment:")
-    print(f"MODE: {args.mode}")
-    print(f"SAMPLING DURATION: {args.smpl_duration}")
-    print(f"BATCH SIZE: {args.batch_size}")
-    if args.eval_tgr:
-        # print(f"Tegrastats configuration: \nSAMPLING INTERVAL: {args.tgr_interval}\nSAMPLING DURATION: {args.smpl_duration}\
-        #     \nSAMPLING BOUNDRY: {args.tgr_smpl_boundry}")
-        print(f"Tegrastats configuration: \nSAMPLING INTERVAL: {args.tgr_interval}\nSAMPLING BOUNDRY: {args.tgr_smpl_boundry}")
-    # if args.eval_thr:
-    #     print(f"SAMPLING COUNT: {args.tgr_smpl_boundry}")
+def InitializeParams(args):  
+
+    if args.log_file is not None:
+        logfile = args.log_file
+    else:
+        logfile = os.path.join(project_path,"Dataset/Multinet", 'logs', f"Mode{args.mode}.log")
+
+    # Create a SimpleLogger object
+    logger = SimpleLogger(args,logfile)
+
+    for arg, value in sorted(vars(args).items()):
+        logger.info("Argument %s: %r", arg.upper(), value)
 
     # Define the mode to run the experiment
     # Make sure the mode specified is alredy set in Tx2
@@ -115,18 +120,18 @@ def InitializeParams(args):
             
             InvalidParams = [param for param in OverWriteParams if param not in Paramtemp]
             if len(InvalidParams):
-                print(f"Parameters `{InvalidParams}` not identified in Available Parameters")
+                logger.warning(f"Parameters `{InvalidParams}` not identified in Available Parameters")
                 return ModeS, Parameters
             Parameters = Paramtemp
         
         else:
             Parameters = AvailParams
         
-        print(f"Parameters sampled: {Parameters}\n")
+        logger.info(f"Parameters sampled: {Parameters}")
+    
+    return ModeS, Parameters, logger
 
-    return ModeS, Parameters
-
-def WorkloadDataGenerator(args, ModeS, Parameters):
+def WorkloadDataGenerator(args, ModeS, Parameters,logger):
     try:
         # Set the seed for random number generation
         if args.seed > 0:
@@ -140,15 +145,15 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
             np.random.seed(args.mode)
             torch.manual_seed(args.mode)
 
-        trailRun = True
+        WarmUP = True
 
         if args.device_priorities is not None:
             args.device_priorities = [float(dev) for dev in args.device_priorities.split(",")]
 
         sampling_freq = 1000.0/args.tgr_interval
         tgr_NS = int((1000/args.tgr_interval)*args.smpl_duration) 
-        print(f"Tegrastats Sampling Frequency: {sampling_freq} Hz")
-        print(f"Number of tegrastat samples to be captured for each mapping: {tgr_NS}")
+        logger.info(f"Tegrastats Sampling Frequency: {sampling_freq} Hz")
+        logger.info(f"Number of tegrastat samples to be captured for each mapping: {tgr_NS}\n")
 
         # Get the list of models to be used for the experiment
         if type(args.model_list) == str:
@@ -156,9 +161,9 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
         elif args.model_list is None:
             model_list = get_model_list(args.jetsonDevice)
         else:
-            print("Invalid model list")
+            logger.warning("Invalid model list")
             return
-        print(f"Models to be used: {model_list}")
+        logger.info(f"Models to be used: {model_list}")
 
         random.shuffle(model_list)
 
@@ -171,9 +176,9 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
         for i in range(args.num_samples%NumCases):
             MappingsperCases[-(i+1)] += 1
 
-        print("The following two lists provide the number of models and mappings to be generated for each case.")
-        print(f"Number of Models for each case: {NumModelsCases}")
-        print(f"Number of Mappings for each case: {MappingsperCases}\n")
+        logger.info("The following two lists provide the number of models and mappings to be generated for each case.")
+        logger.info(f"Number of Models for each case: {NumModelsCases}")
+        logger.info(f"Number of Mappings for each case: {MappingsperCases}\n")
 
         GeneratedModelsPerCases = [0]*NumCases
 
@@ -192,13 +197,14 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
         # Generate single network mappings
         if args.single_nets:
 
-            if trailRun:
+            if WarmUP:
+                logger.info("Warming up the system with a trail run ...")
                 # Randomly choose n number of  models accroding to the case
                 Model_set = np.random.choice(model_list,min(len(model_list),5), replace = False)
                 MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=1,device_prioriy = args.device_priorities, seed=randSeed)
                 ObjStages,mapping = MapperObj.iter()
                 InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
-                trailRun = False
+                WarmUP = False
 
             for model_name in model_list:
                 
@@ -206,6 +212,8 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                 NumObjs = 1
 
                 for device in args.device_list:
+
+                    logger.info(f"{model_name} on {device}")
 
                     # Mappier object with one network and one device(GPU)
                     MapperObj = MappingGenerator(args.jetsonDevice,[device],[model_name],NumSamples=1,device_prioriy = [1], seed=randSeed)
@@ -241,14 +249,25 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     # Remove the object stages from  memory
                     del ObjStages
                     gc.collect()
+
+                    # remove the weights of the models to manage device storage
+                    if args.remove_weights:
+                        weightsPath = os.path.join(project_path, 'multi_network_stats/ModelCheckPoints')
+                        if os.path.exists(weightsPath):                       
+                            modelPath = os.path.join(weightsPath,model_name)
+                            if os.path.exists(modelPath):
+                                shutil.rmtree(modelPath, ignore_errors=True)
+                                logger.debug(f"Removed weights for model: {model_name}")
                 NumObjs += 1
 
             numProcessedMappings = 0
+        
+        logger.info("Single network mappings generation completed!")
 
         # while GeneratedModelsPerCases[caseIdx] < MappingsperCases[caseIdx]:
         for caseIdx in range(NumCases):
 
-            print(f"New case with number of models in each mapping = {NumModelsCases[caseIdx]}\n")
+            logger.info(f"New case with number of models in each mapping = {NumModelsCases[caseIdx]}")
 
             # Number of sets of networks created for the current case
             NumObjs = 1
@@ -265,28 +284,28 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                 Model_set = np.random.choice(model_list,NumModelsCases[caseIdx], replace = False)
 
                 # Set of models to be used for the mapper object
-                print("\nModel set: ", Model_set)
+                logger.info(f"Model set: {Model_set}")
 
+                # remove the weights of the models to manage device storage
                 if args.remove_weights:
                     weightsPath = os.path.join(project_path, 'multi_network_stats/ModelCheckPoints')
-                    if os.path.exists(weightsPath):
-                        
-                        availableModels= os.listdir(weightsPath)
-                        
+                    if os.path.exists(weightsPath):                       
+                        availableModels= os.listdir(weightsPath)                        
                         removeWeights = [model for model in availableModels if model not in Model_set]
-
                         for model in removeWeights:
                             modelPath = os.path.join(weightsPath,model)
                             if os.path.exists(modelPath):
-                                os.rmdir(modelPath)
-                                print(f"Removed weights for model: {model}")
+                                shutil.rmtree(modelPath, ignore_errors=True)
+                                logger.debug(f"Removed weights for model: {model}")
 
                 # Warm up the system with a trail run 
-                if trailRun:
+                if WarmUP:
+                    logger.info("Warming up the system with a trail run ...")
+                    # MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed,logger=logger)
                     MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj,device_prioriy = args.device_priorities, seed=randSeed)
                     ObjStages,mapping = MapperObj.iter()
                     InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
-                    trailRun = False
+                    WarmUP = False
 
                 CaseList = None
                 if args.max_split_nets >= 0:
@@ -300,11 +319,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                         # Assign the remaining samples to the last case
                         CaseList[-1] += SmplPerObj%(args.max_split_nets+1)
 
-                    # # Assign the remaining samples to the last few cases
-                    # for i in range(SmplPerObj%(args.max_split_nets+1)):
-                    #     CaseList[-(i+1)] += 1
-
-                    print(f"CaseList: {CaseList}")
+                    logger.info(f"CaseList: {CaseList}")
 
                 # Map all networks in the model set to GPU
                 if args.gpu_only_maps:
@@ -316,7 +331,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                 # Incremented upon mappings fail due to cuda out of memory error
                 retryCount = 0
 
-                print("\n")
+                # logger.newline()
 
                 # Store the current case mapping counts
                 OldMapperObjCaseCounts = deepcopy(MapperObj.mapCaseCounts)
@@ -330,7 +345,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                         retryCount += 1
                         ObjStages,mapping = MapperObj.iter()
                         if retryCount > 10:
-                            print("Retries exceeded! Failed to generate mapping due to cuda out of memory.")
+                            logger.warning("Retries exceeded! Failed to generate mapping due to cuda out of memory.")
                             break
                     if retryCount > 10:
                         break
@@ -341,7 +356,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     # reset the retry count
                     retryCount = 0
 
-                    print(f"Mapping ID {numProcessedMappings + 1}")
+                    logger.info(f"Mapping ID {numProcessedMappings + 1}")
 
                     if args.eval_tgr:
                         InferenceSummary, power_stats = MappingDataExtractor(args,ModeS,Parameters, ObjStages, mapping,image,tgr_NS)
@@ -357,7 +372,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                     # Check the difference in the number of mappings generated for the current case
                     Diff = [i-j for i,j in zip(MapperObj.mapCaseCounts,OldMapperObjCaseCounts)]
 
-                    print(f"Diff: {Diff}")
+                    logger.debug(f"Diff: {Diff}")
 
                     # File name to store the mapping data samples
                     if splitMapperStarted == False:
@@ -395,31 +410,56 @@ def WorkloadDataGenerator(args, ModeS, Parameters):
                         MapperObj = MappingGenerator(args.jetsonDevice,args.device_list,Model_set,NumSamples=SmplPerObj-1,CaseSamples=CaseList,device_prioriy = args.device_priorities, seed=randSeed)
                         splitMapperStarted = True
                     
-                    print("\n")
+                    # logger.newline()
                     ObjStages,mapping = MapperObj.iter()
 
                 NumObjs += 1
 
-        print("\nDataset generation completed!")
+        logger.info("Dataset generation completed!")
 
     except Exception as e1:
-        print(f"\nError: {e1}")
+        logger.error(f"Error: {e1}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
+        logger.error(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
+
+
+def SimpleLogger( args,logfile):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    # create file handler which logs info messages
+    fh = logging.FileHandler(logfile, 'w', 'utf-8')
+    if args.log_level == "DEBUG":
+        fh.setLevel(logging.DEBUG)
+    else:
+        fh.setLevel(logging.INFO)
+    formatter = logging.Formatter('- %(name)s - %(levelname)-8s: %(message)s')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+    if args.log_level == "DEBUG":
+        # create console handler with a debug log level
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.DEBUG)
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+    
+    return logger
 
 if __name__ == "__main__":
     try:
+        logger = None
         t1 = time.time()
         args = arguments_parser()
         if not (args.eval_tgr or args.eval_thr):
             print("Evaluation parameters not enabled")
         else:
-            ModeS, Parameters = InitializeParams(args)
+            ModeS, Parameters, logger = InitializeParams(args)
             if len(Parameters)>0:
-                WorkloadDataGenerator(args,ModeS, Parameters)
+                WorkloadDataGenerator(args,ModeS, Parameters,logger)
         t2 = time.time()
-        print(f"\nTime taken for Mode{args.mode}: {t2-t1} seconds")
+        logger.info(f"\nTime taken for Mode{args.mode}: {t2-t1} seconds")
     except Exception as e:
         print(f"\nError: {e}")
         exc_type, exc_obj, exc_tb = sys.exc_info()

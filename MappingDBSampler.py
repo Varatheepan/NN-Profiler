@@ -13,13 +13,12 @@ from copy import deepcopy
 from pathlib import Path
 import subprocess
 import signal
+import logging
 try:
     from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
     DeepSPeed = True
 except Exception as e:
     DeepSPeed = False
-    print(f"Import Error: {e}")
-    print("DeepSpeed cannot be loaded.")
     pass
 from thop import profile
 from thop import clever_format
@@ -65,6 +64,12 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
     try:
         global Running_active
 
+        # get logger
+        logger = logging.getLogger(__name__)
+
+        if DeepSPeed == False:
+            logger.warning("DeepSpeed cannot be loaded.")
+
         InferenceSummary = None
         power_stats = None
 
@@ -73,14 +78,14 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
         model_list = list(mapping.keys())
 
 
-        print(f"Mapping: , {mapping}")
+        logger.info(f"Mapping: , {mapping}")
 
         if args.eval_thr:
             ##########################################################
                         # Throughtput capturing 
             ########################################################## 
 
-            print("Throughput evaluation ...")
+            logger.info("Throughput evaluation ...")
 
             for model_name in model_list:            
                 threadDict[model_name] = threading.Thread(target = RunStagesSequential, args = (ObjStages[model_name],image))
@@ -113,14 +118,14 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             
             t3 = time.time()
 
-            print(f"Time taken to stop threads: {t3-t2}")
+            logger.info(f"Time taken to stop threads: {t3-t2}")
 
         if args.eval_tgr:
             #########################################################
                         # Power stats capturing 
             #########################################################
 
-            print("Power evaluation ...")
+            logger.info("Power evaluation ...")
 
             thread_names = list(threadDict.keys())
             for thread_name in thread_names:
@@ -157,7 +162,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
             
             t2 = time.time()
 
-            print(f"Execution time: {t2-t1}")
+            logger.info(f"Execution time: {t2-t1}")
             
             Running_active = False
 
@@ -197,21 +202,21 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                         params = prof.get_total_params(as_string=True)
                         prof.end_profile()
                     except Exception as e:
-                        print(f"Profiling error in DeepSpeed: {e}")
+                        logger.Error(f"Profiling error in DeepSpeed: {e}")
                         flops, macs, params = None, None, None
 
                 if params is None:
                     try:
                         # use thops
-                        macs, params = profile(stage.layerSet.to("cpu"), inputs=(torch.randn(tuple(stage.inputSize)), ))
+                        macs, params = profile(stage.layerSet.to("cpu"), inputs=(torch.randn(tuple(stage.inputSize)), ), verbose=False)
                         macs, params = clever_format([macs, params], "%.3f")
-                        # print(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
+                        # logger.info(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
                     except Exception as e:
-                        print("Profiling error in Thops: {e}")
+                        logger.Error("Profiling error in Thops: {e}")
                         macs, params = None, None
 
-                if DeepSPeed and (flops is None):
-                    print("Warning: DeepSpeed profiling failed. Using thop for profiling.")
+                if DeepSPeed and (flops is None) and (not macs is None):
+                    logger.warning("DeepSpeed profiling failed. Using thop for profiling.")
                               
                 InferenceSummary[model_name][stage.device.type]["macs"] = macs
                 InferenceSummary[model_name][stage.device.type]["params"] = params 
@@ -222,12 +227,12 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                 # Remove the stage layerSet to avoid memory issues
                 ret = stage.removeStage()
                 if not ret:
-                    print(f"Waring: Error while removing {stageID} from {model_name}")
+                    logger.warning(f"Error while removing {stageID} from {model_name}")
         
 
         return InferenceSummary, power_stats
     except Exception as e1:
-        print(f"Error: {e1}")
+        logger.error(f"Error: {e1}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
+        logger.error(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")

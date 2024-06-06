@@ -2,8 +2,12 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+import logging
 
 def get_num_layers(model:nn.Module):
+
+    logger = logging.getLogger(__name__)
+    
     count = 0
     for module in model.children():
         
@@ -16,7 +20,7 @@ def get_num_layers(model:nn.Module):
                 else:
                     count += 1
             else:
-                print(f"Module type not added: {module.__class__.__name__}")
+                logger.warning(f"Module type not handled: {module.__class__.__name__}")
     return count
 
 def banned_mods():

@@ -6,12 +6,16 @@ import queue
 from copy import deepcopy
 import time
 import gc
+import logging
 
 # This class will handle a subset of layers of a network to run on a device
 class Stage:
     # def __init__(self,Device:torch.DeviceObjType,Layers:nn.Module, OutPutQueue: queue.Queue, InOutBuf:int = -1) -> None:
     def __init__(self,Device:torch.DeviceObjType,Layers:nn.Module, InOutBuf:int = -1, stagePosition:int = 0) -> None:
         
+        # Logger
+        self.logger = logging.getLogger(__name__)
+
         # A subset of layers from a network 
         self.layerSet = Layers      
 
@@ -95,7 +99,8 @@ class Stage:
         # If there are stages after this, store the output to the input queue of the next stage
         if self.stagePos == 0 or self.stagePos == 1:
             if NextStage == None:
-                print("Next stage should be passed if the stage is at the start or middile of the pipeline")
+                self.logger.warning("Next stage should be passed if the stage is at the start or middile of the pipeline")
+
                 return ValueError
 
             # Set the output to the next stage's device
@@ -150,7 +155,7 @@ class Stage:
             self.layerSet.to(self.device)
             return True
         except RuntimeError:
-            print("Error in assigning the stage to the device")
+            self.logger.error("Error in assigning the stage to the device")
             return False
 
 
@@ -205,16 +210,10 @@ class Stage:
                     self.infCount += 1
                 else:
                     time.sleep(0.005)
-            # print(f"self.infCount: {self.infCount}, PrevStage.infCount: {PrevStage.infCount}")
-        # else:
-        #     while not self.InputQueue.empty():
-        #         self.forward(NextStage)
-        #         self.infCount += 1
         
         # set the status of the stage as finished
         self.stageRunning = False
 
-        # print("Stage: ", self.stagePos,", number of inference: ", self.infCount)
     
     def activateStage(self):
         self.stageActive = True 
@@ -234,7 +233,6 @@ class Stage:
             gc.collect()
             return True
         except:
-            # print("Could not remove the stage from the memory")
             return False
-
+        
 

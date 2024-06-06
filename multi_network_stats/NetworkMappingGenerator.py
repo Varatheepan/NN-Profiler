@@ -8,6 +8,7 @@ from itertools import permutations
 from copy import deepcopy
 from pathlib import Path
 import collections
+import logging
 
 from layer_stats.rawDataGeneration.PowerLatencySampler import flatten_layers, count_layers
 from layer_stats.utils.checker import get_model
@@ -15,7 +16,6 @@ from multi_network_stats.Stage import Stage
 from multi_network_stats.utils.operations import CustomOpExecutor, database_spawn
 
 projectPath = Path(__file__).resolve().parents[0]
-print(projectPath)
 
 class MappingGenerator:
 
@@ -29,74 +29,73 @@ class MappingGenerator:
             device_prioriy: The weightage given to the devices in the compComponentList according while craeting mapping samples
             Eg: [1,2] will allocate the stage with more layers to `cuda` often
         """
-        # The list of devices
-        self.compComponentList = compComponentList
+        try:
+            # Create a logger object
+            self.logger = logging.getLogger(__name__)
 
-        # The number of devices
-        self.num_devices = len(compComponentList)
+            # The list of devices
+            self.compComponentList = compComponentList
 
-        # The list of networks in the workload
-        self.network_list = network_list
+            # The number of devices
+            self.num_devices = len(compComponentList)
 
-        # Number of smaples to generate in the dataset
-        self.NumSamples = NumSamples
+            # The list of networks in the workload
+            self.network_list = network_list
 
-        # Mapping object ~ The mapped layers in the order of compComponentList
-        self.stageMap = [None]*self.num_devices
+            # Number of smaples to generate in the dataset
+            self.NumSamples = NumSamples
 
-        self.jetsonDevice = jetsonDevice
+            # Mapping object ~ The mapped layers in the order of compComponentList
+            self.stageMap = [None]*self.num_devices
 
-        # NOTE: eliminated
-        # # The possible set of mapping combinations
-        # self.mapPatterns = []
-        # self.generate_mapping_combinations()
+            self.jetsonDevice = jetsonDevice
 
-        # An object to keep the count of mapping cases considered
-        self.mapCaseCounts = []
+            # An object to keep the count of mapping cases considered
+            self.mapCaseCounts = []
 
-        # Number of samples to be generated for each mapping case
-        self.mapCases = []
-        self.generate_mapCases(self.NumSamples,CaseSamples)
+            # Number of samples to be generated for each mapping case
+            self.mapCases = []
+            self.generate_mapCases(self.NumSamples,CaseSamples)
 
-        # List of generated mapping samples
-        self.mappingsList = []
+            # List of generated mapping samples
+            self.mappingsList = []
 
-        # A dictionary of number of layers per network
-        self.numLayerDict = {}
+            # A dictionary of number of layers per network
+            self.numLayerDict = {}
 
-        # Download and store the model weights and update numLayerDict
-        self.download_model_weights()
+            # Download and store the model weights and update numLayerDict
+            self.download_model_weights()
 
-        # The total number of samples generated
-        self.iterIdx = 0
+            # The total number of samples generated
+            self.iterIdx = 0
 
-        # Index of the current case
-        self.caseIdx = 0
+            # Index of the current case
+            self.caseIdx = 0
 
-        # op_excuter for the intermediate (pre-)processes
-        self.op_executor = database_spawn(preprocess=True,jetson_device=jetsonDevice)
+            # op_excuter for the intermediate (pre-)processes
+            self.op_executor = database_spawn(preprocess=True,jetson_device=jetsonDevice)
 
-        # Probablity of selecting each device for randomization
-        if device_prioriy == None:
-            device_prioriy = [1]*self.num_devices
-        self.deviceProb = list(np.array(device_prioriy)/float(sum(device_prioriy)))
+            # Probablity of selecting each device for randomization
+            if device_prioriy == None:
+                device_prioriy = [1]*self.num_devices
+            self.deviceProb = list(np.array(device_prioriy)/float(sum(device_prioriy)))
 
+            """
+            # NOTE: eliminated
+            # # Number of samples generated for each pattern
+            # self.patternCount = [0]*len(self.mapPatterns)
 
+            # # The order of the stages in the pipeline
+            # self.pipelineOrder = [None]*self.num_devices
+            """
 
-        """
-        # NOTE: eliminated
-        # # Number of samples generated for each pattern
-        # self.patternCount = [0]*len(self.mapPatterns)
+            # Add the instance to the list of instances
+            MappingGenerator.addInstance(self)
 
-        # # The order of the stages in the pipeline
-        # self.pipelineOrder = [None]*self.num_devices
-        """
-
-        # Add the instance to the list of instances
-        MappingGenerator.addInstance(self)
-
-        # Random seeding
-        np.random.seed(seed)
+            # Random seeding
+            np.random.seed(seed)
+        except Exception as e:
+            print(f"Error in MappingGenerator.__init__: {e}")
 
     @classmethod
     def addInstance(cls,self):
@@ -149,7 +148,7 @@ class MappingGenerator:
         mapping = {}
 
         if self.num_devices == 0:
-            print("Device list is empty!")
+            self.logger.warning("Device list is empty!")
         elif self.num_devices == 1:
             for model_name in model_list:
                 mapping[model_name] = {self.numLayerDict[model_name]:self.compComponentList[0]}
@@ -196,7 +195,6 @@ class MappingGenerator:
 
                 # Random seletcion of devices for each split set of layers
                 stageDevices = np.random.choice(devices, numSplits+1, replace=False,p = self.deviceProb)
-                # print("splitPoints: ", splitPoints, "stageDevices: ", stageDevices)
 
                 # Formatting the mapping 
                 for idx,selDevice in enumerate(stageDevices):
@@ -295,7 +293,7 @@ class MappingGenerator:
                     stage = Stage(torch.device(Devices[idx]),nn.Sequential(layerBlock),stagePosition=2)
                 
                 if stage.status == False:
-                    # print("Stage creation failed! Cuda out of Memory!")
+                    # self.logger.info("Stage creation failed! Cuda out of Memory!")
                     return False
                 stages.append(stage)               
 
@@ -327,7 +325,7 @@ class MappingGenerator:
                 # Assign remaining samples to the single CC case
                 CaseSamples[-1] += NumSamples % num_cases
                 
-                if len(CaseSamples) < num_cases: print(f"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
+                if len(CaseSamples) < num_cases: self.logger.info(f"A list of {num_cases} numbers are expected. Defaulting to a linear function.")
                 
             # The array of cases with keys denoting the number of stand alone network stages and the values are the total number of generated examples.
             # The rest of the networks will be splitted among devices randomly.
@@ -335,7 +333,7 @@ class MappingGenerator:
 
             self.mapCaseCounts = [0]*num_cases
 
-        print(f"self.mapCases: {self.mapCases}")
+        self.logger.info(f"self.mapCases: {self.mapCases}")
 
     def download_model_weights(self):
 
@@ -427,7 +425,7 @@ class MappingGenerator:
             else:
                 retries += 1
                 if retries == 10:
-                    print("Couldn't create new mapping. Exiting!")
+                    self.logger.warning("Couldn't create new mapping. Exiting!")
                     return False,False
         
         self.mappingsList.append(Mappings)
@@ -441,14 +439,14 @@ class MappingGenerator:
             # try:
             stages = self.create_network_stages(model_name,mapping)
             if stages == False:
-                print("Stage creation failed! Exiting!")
+                self.logger.warning("Stage creation failed! Exiting!")
                 return True,False
             stageDict[model_name] = stages
 
         self.mapCaseCounts[self.caseIdx] += 1
         self.iterIdx += 1
-        # print("self.iterIdx: ",self.iterIdx,"  Mappings: ", Mappings)
-        print(f"MapCaseCounts: {self.mapCaseCounts}")
+
+        self.logger.info(f"MapCaseCounts: {self.mapCaseCounts}")
 
         return stageDict,Mappings
 
@@ -456,26 +454,26 @@ class MappingGenerator:
         numMappings = len(Mappings)
 
         if numMappings != len(self.network_list):
-            print("Not all the networks are mapped. Invalid mapping!")
+            self.logger.warning("Not all the networks are mapped. Invalid mapping!")
             return False
             
         for model_name in Mappings.keys():
             if model_name not in self.network_list:
-                print(f"IModel `{model_name}` not in network list. Invalid mapping")
+                self.logger.warning(f"IModel `{model_name}` not in network list. Invalid mapping")
                 return False
             
             if len(Mappings[model_name]) == 0:
-                print(f"Mapping for `{model_name}`is Invalid!")
+                self.logger.warning(f"Mapping for `{model_name}`is Invalid!")
                 return False
             
             for device in Mappings[model_name].values():
                 if device not in self.compComponentList:
-                    print(f"Device `{device}` not in device list. `{model_name}` mapping is Invalid!")
+                    self.logger.warning(f"Device `{device}` not in device list. `{model_name}` mapping is Invalid!")
                     return False
             
             for layerIdx in Mappings[model_name].keys():
                 if layerIdx> self.numLayerDict[model_name]:
-                    print(f"Layer index exceeded. Mapping for `{model_name}`is Invalid!")
+                    self.logger.warning(f"Layer index exceeded. Mapping for `{model_name}`is Invalid!")
                     return False
         return True
 

@@ -1,9 +1,13 @@
 import os, sys
 import re
+import logging
 
 # This function will extract the power (or other parameters needed) from tegrastats output
 
 def analyze_power_stats(txt_file: str, device,parameters: list, jetsonDevice: str = "Tx2"):
+    
+    logger = logging.getLogger(__name__)
+    
     try:
         stats = open(txt_file,"r")
         content = stats.readlines()
@@ -100,7 +104,7 @@ def analyze_power_stats(txt_file: str, device,parameters: list, jetsonDevice: st
                     row[metric] = match.group(1)
                     # Readings[metric].append(match.group(1))
 
-            # print(f"Row: {row}")
+            # logger.debug(f"Row: {row}")
 
             # Ram and Swap parameters
             ReadingOutput["RAM"].append(int(row["RAM"].split("/")[0]))
@@ -193,10 +197,10 @@ def analyze_power_stats(txt_file: str, device,parameters: list, jetsonDevice: st
 
         return ReadingOutput
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
+        logger.error(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
         return exc_type
     
 
