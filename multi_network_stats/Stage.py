@@ -149,10 +149,13 @@ class Stage:
 
         return x
 
-    def assignToDevice(self):
+    def assignToDevice(self, dev = None):
         """ Assign the stage to the device."""
         try:
-            self.layerSet.to(self.device)
+            if dev != None:
+                self.layerSet.to(dev)
+            else:
+                self.layerSet.to(self.device)
             return True
         except RuntimeError:
             self.logger.error("Error in assigning the stage to the device")
@@ -226,13 +229,15 @@ class Stage:
     
     def removeStage(self):
         try:
-            self.layerSet.to("cpu")
-            torch.cuda.empty_cache()
-            time.sleep(0.5)
+            if self.device.type == 'cuda':
+                self.layerSet.to(torch.device("cpu"))
+                torch.cuda.empty_cache()
+                time.sleep(0.5)
             del self.layerSet
             gc.collect()
             return True
-        except:
+        except Exception as e:
+            self.logger.error(f"Error in removing the stage: {e}")
             return False
         
 

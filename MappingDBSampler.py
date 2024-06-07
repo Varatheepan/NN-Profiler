@@ -183,20 +183,26 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
 
 
         for model_name in model_list:
+            tempStage = None
             for stageID,stage in enumerate(ObjStages[model_name]):
                 if stage.device.type not in InferenceSummary[model_name]:
                         InferenceSummary[model_name][stage.device.type] = {}
 
                 flops, macs, params = None, None, None
-
+                if stage.device.type == "cuda":
+                    tempStage = stage.layerSet.to(torch.device("cpu"))
+                else: 
+                    tempStage = stage.layerSet
+                # logger.info(f"tempStage assigned to {next(tempStage.parameters()).device}")
+                
                 if DeepSPeed:
                     try:
                         # DeepSpeed
-                        prof = FlopsProfiler(stage.layerSet)
+                        prof = FlopsProfiler(tempStage)
                         prof.start_profile()
                         x = torch.randn(tuple(stage.inputSize))
-                        stage.layerSet.to("cpu")
-                        stage.layerSet(x)
+                        # tempStage.to("cpu")
+                        tempStage(x)
                         flops = prof.get_total_flops(as_string=True)
                         macs = prof.get_total_macs(as_string=True)
                         params = prof.get_total_params(as_string=True)
@@ -208,11 +214,11 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                 if params is None:
                     try:
                         # use thops
-                        macs, params = profile(stage.layerSet.to("cpu"), inputs=(torch.randn(tuple(stage.inputSize)), ), verbose=False)
+                        macs, params = profile(tempStage, inputs=(torch.randn(tuple(stage.inputSize)), ), verbose=False)
                         macs, params = clever_format([macs, params], "%.3f")
                         # logger.info(f"Mac count: {macs}, Param count: {params}", model_name, stage.device.type)
                     except Exception as e:
-                        logger.error("Profiling error in Thops: {e}")
+                        logger.error(f"Profiling error in Thops: {e}")
                         macs, params = None, None
 
                 if DeepSPeed and (flops is None) and (not macs is None):
@@ -222,7 +228,7 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
                 InferenceSummary[model_name][stage.device.type]["params"] = params 
                 InferenceSummary[model_name][stage.device.type]["flops"] = flops
                 if args.funcLayerCount:
-                    InferenceSummary[model_name][stage.device.type]["functionalLayerCount"] = get_num_layers(stage.layerSet)
+                    InferenceSummary[model_name][stage.device.type]["functionalLayerCount"] = get_num_layers(tempStage)
                     
                 # Remove the stage layerSet to avoid memory issues
                 ret = stage.removeStage()
@@ -236,3 +242,4 @@ def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         logger.error(f"{exc_type}, {fname}, {exc_tb.tb_lineno}")
+        return {},{}

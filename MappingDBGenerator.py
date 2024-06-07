@@ -30,6 +30,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from tegrestats.tegrastats_utils import analyze_power_stats
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
 # Project path
 project_path = Path(__file__).resolve().parents[0]
 
@@ -81,6 +84,7 @@ def arguments_parser():
     parser.add_argument("--log_file", default=None, help="The log file to store the output of the experiment.")
     parser.add_argument("--log_level", default="INFO", choices= ["DEBUG", "INFO"], help="The log level to be used for the experiment.")
     # parser.add_argument("--disable_logging", action='store_true', help="Whether to disable logging and print in terminal.")
+    parser.add_argument("--warmup" , action='store_true', help="Whether to warm up the system before the experiment.")
 
     return parser.parse_args()
 
@@ -145,13 +149,16 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
             np.random.seed(args.mode)
             torch.manual_seed(args.mode)
 
-        WarmUP = True
+        if args.warmup:
+            WarmUP = True
+        else:
+            WarmUP = False
 
         if args.device_priorities is not None:
             args.device_priorities = [float(dev) for dev in args.device_priorities.split(",")]
 
         sampling_freq = 1000.0/args.tgr_interval
-        tgr_NS = int((1000/args.tgr_interval)*args.smpl_duration) 
+        tgr_NS = int((1000/args.tgr_interval)*(args.smpl_duration+args.tgr_smpl_boundry)) 
         logger.info(f"Tegrastats Sampling Frequency: {sampling_freq} Hz")
         logger.info(f"Number of tegrastat samples to be captured for each mapping: {tgr_NS}\n")
 
@@ -262,7 +269,7 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
 
             numProcessedMappings = 0
         
-        logger.info("Single network mappings generation completed!")
+            logger.info("Single network mappings generation completed!")
 
         # while GeneratedModelsPerCases[caseIdx] < MappingsperCases[caseIdx]:
         for caseIdx in range(NumCases):
@@ -404,6 +411,8 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
                     # Remove the object stages from  memory
                     del ObjStages
                     gc.collect()
+
+                    time.sleep(5)
 
                     # when gpu_only_maps is enabled, generate one such mapping for each model set and run remaining mappings with all devices
                     if not splitMapperStarted:
