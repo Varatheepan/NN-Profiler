@@ -85,6 +85,7 @@ def arguments_parser():
     parser.add_argument("--log_level", default="INFO", choices= ["DEBUG", "INFO"], help="The log level to be used for the experiment.")
     # parser.add_argument("--disable_logging", action='store_true', help="Whether to disable logging and print in terminal.")
     parser.add_argument("--warmup" , action='store_true', help="Whether to warm up the system before the experiment.")
+    parser.add_argument("--start_idx", default=1, type=int, help="The index to start the mapping generation.")
 
     return parser.parse_args()
 
@@ -199,7 +200,10 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
         else:
             image = image.repeat(args.batch_size,1,1,1)
 
-        numProcessedMappings = 0
+        if args.start_idx > 1:
+            numProcessedMappings = args.start_idx - 1
+        else:
+            numProcessedMappings = 0
 
         # Generate single network mappings
         if args.single_nets:
@@ -267,12 +271,26 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
                                 logger.debug(f"Removed weights for model: {model_name}")
                 NumObjs += 1
 
-            numProcessedMappings = 0
+            if args.start_idx > 1:
+                numProcessedMappings = args.start_idx - 1
+            else:
+                numProcessedMappings = 0
         
             logger.info("Single network mappings generation completed!")
 
         # while GeneratedModelsPerCases[caseIdx] < MappingsperCases[caseIdx]:
         for caseIdx in range(NumCases):
+
+            if args.seed > 0:
+                randSeed = args.seed
+                random.seed(args.seed)
+                np.random.seed(args.seed)
+                torch.manual_seed(args.seed)
+            else:
+                randSeed = args.mode
+                random.seed(args.mode)
+                np.random.seed(args.mode)
+                torch.manual_seed(args.mode)
 
             logger.info(f"New case with number of models in each mapping = {NumModelsCases[caseIdx]}")
 
@@ -316,15 +334,21 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
 
                 CaseList = None
                 if args.max_split_nets >= 0:
+
                     CaseList = [0]*(NumModelsCases[caseIdx]+1)
-                    if args.gpu_only_maps:
-                        CaseList[NumModelsCases[caseIdx] - args.max_split_nets:] = [int(np.floor(((SmplPerObj-1)/(args.max_split_nets+1))))]*(args.max_split_nets+1)
-                        # Assign the remaining samples to the last case
-                        CaseList[-1] += (SmplPerObj-1)%(args.max_split_nets+1)
+                    if args.max_split_nets >= NumModelsCases[caseIdx]:
+                        MaxSplitNets = NumModelsCases[caseIdx]
                     else:
-                        CaseList[NumModelsCases[caseIdx] - args.max_split_nets:] = [int(SmplPerObj/(args.max_split_nets+1))]*(args.max_split_nets+1)
+                        MaxSplitNets = args.max_split_nets
+
+                    if args.gpu_only_maps:
+                        CaseList[NumModelsCases[caseIdx] - MaxSplitNets:] = [int(np.floor(((SmplPerObj-1)/(MaxSplitNets+1))))]*(MaxSplitNets+1)
                         # Assign the remaining samples to the last case
-                        CaseList[-1] += SmplPerObj%(args.max_split_nets+1)
+                        CaseList[-1] += (SmplPerObj-1)%(MaxSplitNets+1)
+                    else:
+                        CaseList[NumModelsCases[caseIdx] - MaxSplitNets:] = [int(SmplPerObj/(MaxSplitNets+1))]*(MaxSplitNets+1)
+                        # Assign the remaining samples to the last case
+                        CaseList[-1] += SmplPerObj%(MaxSplitNets+1)
 
                     logger.info(f"CaseList: {CaseList}")
 
