@@ -63,6 +63,7 @@ def RunStagesSequential(stageList:list, imgQueue):
 def MappingDataExtractor(args, ModeS, Parameters, ObjStages, mapping, image,tgr_NS:int = None):
     try:
         global Running_active
+        global DeepSPeed
 
         # get logger
         logger = logging.getLogger(__name__)
