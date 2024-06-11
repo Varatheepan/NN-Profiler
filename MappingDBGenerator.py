@@ -50,7 +50,7 @@ default_preprocess = transforms.Compose([
 
 def arguments_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--jetsonDevice", default="Tx2",choices=["Orin","Tx2","Xavier"], help="The Jetson device to run the experiment on.")
+    parser.add_argument("--jetsonDevice", required=True, choices=["Orin","Tx2","Xavier"], help="The Jetson device to run the experiment on.")
     parser.add_argument("--mode", required=True, type=int, help="The mode that is being experimented. Make sure to switch the mode in Tx2.")
     parser.add_argument("--num_samples", default=20, type=int, help="the number of samples to be generated for the selected mode.")
     parser.add_argument("--device_list", default=["cpu","cuda"], help="The devices to run the experiment on.")
@@ -58,7 +58,7 @@ def arguments_parser():
     parser.add_argument("--model_list", default=None,help="The list of models to be used to generate the dataset.")
     parser.add_argument("--single_nets", action='store_true', help="Whether to generate single network mappings.")
     parser.add_argument("--gpu_only_maps", action='store_true', help="Whether to generate mappings with only GPU devices.")
-    parser.add_argument("--numNetsRange", default=[5,10], nargs=2, type=int, help="The range of number of networks to be used in the mapping.")
+    parser.add_argument("--numNetsRange", default=[2,6], nargs=2, type=int, help="The range of number of networks to be used in the mapping.")
     parser.add_argument("--samples_per_set", default=20, type=int, help="The number of samples to be generated for each set of networks.")
     parser.add_argument("--imgs", default=sample_set, nargs='+',help="A comma seperated list of images to run the experimets. \
                         Images should be stored in data/imagenet.")

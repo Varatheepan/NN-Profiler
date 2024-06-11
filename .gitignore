@@ -32,3 +32,5 @@ tegrestats/tegrastatsSample.txt
 FunctionalLayerNum.txt
 testNumLayers.py
 multi_network_stats/postProcessMultinetDB.py.bkp
+#NVP_Models*
+ReadModelSizes.py
