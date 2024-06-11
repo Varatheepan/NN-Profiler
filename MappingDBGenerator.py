@@ -460,6 +460,10 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
 def SimpleLogger( args,logfile):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
+    
+    # Path to store the logs
+    if not os.path.exists(os.path.join(project_path, 'Dataset/Multinet/logs')):
+        os.makedirs(os.path.join(project_path, 'Dataset/Multinet/logs'))
 
     # create file handler which logs info messages
     fh = logging.FileHandler(logfile, 'w', 'utf-8')
