@@ -14,6 +14,7 @@ def analyze_power_stats(txt_file: str, device,parameters: list, jetsonDevice: st
 
         ReadingOutput = {}
 
+        # Used jetpack version 4.6.4 for Tx2
         tx2_extractor = {
         "RAM": r"RAM (\d+/\d+MB)",
         "SWAP": r"SWAP (\d+/\d+MB)",
@@ -37,6 +38,7 @@ def analyze_power_stats(txt_file: str, device,parameters: list, jetsonDevice: st
         "VDD_4V0_WIFI": r"VDD_4V0_WIFI (\d+/\d+)",
         }
         
+        # Used jetpack version 6.0 for Orin
         orin_extractor = {
         "Timestamp": r"(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})",
         "RAM": r"RAM (\d+/\d+MB)",
@@ -61,13 +63,14 @@ def analyze_power_stats(txt_file: str, device,parameters: list, jetsonDevice: st
         "SOC Power": r"VDD_SOC (\d+mW/\d+mW)"
         }
         
+        # Used jetpack version 5.0.2 for Xavier AGX
         agx_extractor = {
         "Timestamp": r"(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})",
         "RAM": r"RAM (\d+/\d+MB)",
         "SWAP": r"SWAP (\d+/\d+MB)",
         "CPU": r"CPU \[([^\]]+)\]",
         "EMC_FREQ": r"EMC_FREQ (\d+%@\d+)",
-        "GR3D_FREQ": r"GR3D_FREQ (\d+%@\[\d+\])",
+        "GR3D_FREQ": r"GR3D_FREQ (\d+%@\d+)",
         "VIC": r"VIC_FREQ (\d+)",
         "APE": r"APE (\d+)",
         "Aux Temperature": r"AUX@(\d+(\.\d+)?C)",
