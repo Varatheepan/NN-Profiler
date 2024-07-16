@@ -297,7 +297,15 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
             # Number of sets of networks created for the current case
             NumObjs = 1
 
+            ModelList = deepcopy(model_list)
+
             while GeneratedModelsPerCases[caseIdx] < MappingsperCases[caseIdx]:
+
+                ModelSetExtend = []
+
+                if len(ModelList) < NumModelsCases[caseIdx]:
+                    ModelSetExtend.extend(ModelList)
+                    ModelList = deepcopy(model_list)
 
                 # Number of mappings to generate from each object
                 SmplPerObj = args.samples_per_set #int(min(20,MappingsperCases[caseIdx], MappingsperCases[caseIdx] - 20*NumObjs))
@@ -306,7 +314,18 @@ def WorkloadDataGenerator(args, ModeS, Parameters,logger):
                 splitMapperStarted = False
 
                 # Randomly choose n number of  models accroding to the case
-                Model_set = np.random.choice(model_list,NumModelsCases[caseIdx], replace = False)
+                if len(ModelSetExtend) > 0:
+                    TempModelList = deepcopy(ModelList)
+                    for Model in ModelSetExtend:
+                        TempModelList.remove(Model)    
+                    Model_set = np.random.choice(TempModelList,NumModelsCases[caseIdx]-len(ModelSetExtend), replace = False)
+                    Model_set = np.concatenate((ModelSetExtend,Model_set))
+                else:
+                    Model_set = np.random.choice(ModelList,NumModelsCases[caseIdx], replace = False)
+
+                for Model in Model_set:
+                    if Model not in ModelSetExtend:
+                        ModelList.remove(Model)
 
                 # Set of models to be used for the mapper object
                 logger.info(f"Model set: {Model_set}")
