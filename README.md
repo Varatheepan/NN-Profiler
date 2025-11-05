@@ -53,7 +53,9 @@ python3 layer_stats/processedDataGeneration/processData.py
 ```
 This will create a json file for each mode present (or specified). Each json file file will have network wise stats in the ```Network-Device-Parameter``` order.
 
-An example mode data will look like following.
+<details>
+<summary>An example mode data will look like following.</summary>
+
 ```python
 {
     "efficientnet_b2": {
@@ -98,6 +100,7 @@ An example mode data will look like following.
     }
 }
 ``` 
+</details>
 
 ## Multi-DNN workload data generation
 
@@ -155,7 +158,9 @@ The following arguments can be passed to post process selective modes of corresp
 
 This will create json files for each sample present in the mode from the mode list.
 
-AN example workload of 4 DNNs.
+<details>
+<summary>AN example workload of 4 DNNs.</summary>
+
 ```python
 {
     "mapping": {
@@ -338,4 +343,4 @@ AN example workload of 4 DNNs.
     }
 }
 ```
-
+</details>
